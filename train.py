@@ -13,6 +13,7 @@ from tensorboardX import SummaryWriter
 
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from models import MoE
 from args import get_train_test_args
 
 from tqdm import tqdm
@@ -148,8 +149,14 @@ class Trainer():
         if not os.path.exists(self.path):
             os.makedirs(self.path)
 
-    def save(self, model):
-        model.save_pretrained(self.path)
+    def save(self, model, f1_score):
+        #model.save_pretrained(self.path)
+        # TODO: add save model
+        save_file = os.path.join(self.save_dir, "saved_model_{:.3f}.pt".format(f1_score))
+        save_file_config = os.path.join(self.args.save_dir, "config_{:.3f}.json".format(f1_score))
+        torch.save(model.state_dict(), save_file)
+        model.config.to_json_file(save_file_config)
+        return
 
     def evaluate(self, model, data_loader, data_dict, return_preds=False, split='validation'):
         device = self.device
@@ -165,9 +172,11 @@ class Trainer():
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
                 batch_size = len(input_ids)
-                outputs = model(input_ids, attention_mask=attention_mask)
+                logits, aux_loss = model(batch)
                 # Forward
-                start_logits, end_logits = outputs.start_logits, outputs.end_logits
+                start_logits, end_logits = logits.split(384, dim=-1)
+                start_logits = start_logits.squeeze(-1)
+                end_logits = end_logits.squeeze(-1)
                 # TODO: compute loss
 
                 all_start_logits.append(start_logits)
@@ -207,13 +216,27 @@ class Trainer():
                     optim.zero_grad()
                     model.train()
                     input_ids = batch['input_ids'].to(device)
-                    attention_mask = batch['attention_mask'].to(device)
+                    # attention_mask = batch['attention_mask'].to(device)
                     start_positions = batch['start_positions'].to(device)
                     end_positions = batch['end_positions'].to(device)
-                    outputs = model(input_ids, attention_mask=attention_mask,
-                                    start_positions=start_positions,
-                                    end_positions=end_positions)
-                    loss = outputs[0]
+                    # outputs = model(input_ids, attention_mask=attention_mask,
+                    #                 start_positions=start_positions,
+                    #                 end_positions=end_positions)
+
+                    logits, aux_loss = model(batch)
+                    start_logits, end_logits = logits.split(384, dim=-1)
+                    start_logits = start_logits.squeeze(-1)
+                    end_logits = end_logits.squeeze(-1)
+
+                    ignored_index = start_logits.size(1)
+                    start_positions.clamp_(0, ignored_index)
+                    end_positions.clamp_(0, ignored_index)
+
+                    loss_fct = torch.nn.CrossEntropyLoss(ignore_index=ignored_index)
+                    start_loss = loss_fct(start_logits, start_positions)
+                    end_loss = loss_fct(end_logits, end_positions)
+                    qa_loss = (start_loss + end_loss) / 2
+                    loss = qa_loss + aux_loss
                     loss.backward()
                     optim.step()
                     progress_bar.update(len(input_ids))
@@ -236,7 +259,7 @@ class Trainer():
                                            num_visuals=self.num_visuals)
                         if curr_score['F1'] >= best_scores['F1']:
                             best_scores = curr_score
-                            self.save(model)
+                            self.save(model, curr_score['F1'])
                     global_idx += 1
         return best_scores
 
@@ -254,9 +277,14 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name):
 def main():
     # define parser and arguments
     args = get_train_test_args()
-
+    input_size = 384 * 768
+    output_size = 384 * 2
+    num_experts = 10
+    hidden_size = 1024
+    k = 4
     util.set_seed(args.seed)
-    model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+    #model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+    model = MoE(input_size, output_size, num_experts,hidden_size, k=k, noisy_gating=True)
     tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
 
     if args.do_train:

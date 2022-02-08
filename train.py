@@ -152,10 +152,11 @@ class Trainer():
     def save(self, model, f1_score):
         #model.save_pretrained(self.path)
         # TODO: add save model
-        save_file = os.path.join(self.save_dir, "saved_model_{:.3f}.pt".format(f1_score))
-        save_file_config = os.path.join(self.args.save_dir, "config_{:.3f}.json".format(f1_score))
-        torch.save(model.state_dict(), save_file)
-        model.config.to_json_file(save_file_config)
+        # save_file = os.path.join(self.save_dir, "saved_model_{:.3f}.pt".format(f1_score))
+        # save_file_config = os.path.join(self.save_dir, "config_{:.3f}.json".format(f1_score))
+        # model_to_save = model.module if hasattr(model, 'module') else model
+        # torch.save(model_to_save.state_dict(), save_file)
+        # model_to_save.config.to_json_file(save_file_config)
         return
 
     def evaluate(self, model, data_loader, data_dict, return_preds=False, split='validation'):
@@ -201,7 +202,7 @@ class Trainer():
             return preds, results
         return results
 
-    def train(self, model, train_dataloader, eval_dataloader, val_dict):
+    def train(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict):
         device = self.device
         model.to(device)
         optim = AdamW(model.parameters(), lr=self.lr)
@@ -244,16 +245,25 @@ class Trainer():
                     tbx.add_scalar('train/NLL', loss.item(), global_idx)
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
-                        preds, curr_score = self.evaluate(model, eval_dataloader, val_dict, return_preds=True)
+                        preds, curr_score = self.evaluate(model, dev_dataloader, dev_dict, return_preds=True)
                         results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in curr_score.items())
                         self.log.info('Visualizing in TensorBoard...')
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
-                        self.log.info(f'Eval {results_str}')
+                        self.log.info(f'In domain {results_str}')
+
+                        preds, curr_score = self.evaluate(model, ood_dev_dataloader, ood_dev_dict, return_preds=True)
+                        results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in curr_score.items())
+                        for k, v in curr_score.items():
+                            tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
+                        self.log.info(f'Out of domain {results_str}')
+
+
+
                         if self.visualize_predictions:
                             util.visualize(tbx,
                                            pred_dict=preds,
-                                           gold_dict=val_dict,
+                                           gold_dict=dev_dict,
                                            step=global_idx,
                                            split='val',
                                            num_visuals=self.num_visuals)
@@ -299,20 +309,29 @@ def main():
         train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train')
         log.info("Preparing Validation Data...")
         val_dataset, val_dict = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val')
+        log.info("Preparing Test Data...")
+        ood_val_dataset, ood_val_dict = get_dataset(args, args.eval_datasets, "datasets/oodomain_val", tokenizer, "val")
+
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler=RandomSampler(train_dataset))
         val_loader = DataLoader(val_dataset,
                                 batch_size=args.batch_size,
                                 sampler=SequentialSampler(val_dataset))
-        best_scores = trainer.train(model, train_loader, val_loader, val_dict)
+        
+        ood_val_loader = DataLoader(ood_val_dataset,
+                                 batch_size=args.batch_size,
+                                 sampler=SequentialSampler(ood_val_dataset))
+        best_scores = trainer.train(model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
+
     if args.do_eval:
         args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
         log = util.get_logger(args.save_dir, f'log_{split_name}')
         trainer = Trainer(args, log)
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-        model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
+        # TODO: add loading model for MoE
+        #model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
         model.to(args.device)
         eval_dataset, eval_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name)
         eval_loader = DataLoader(eval_dataset,

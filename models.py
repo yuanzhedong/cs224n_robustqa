@@ -31,7 +31,6 @@ def top1(t):
     return values, index
 
 def cumsum_exclusive(t, dim=-1):
-    num_dims = len(t.shape)
     num_pad_dims = - dim - 1
     pre_padding = (0, 0) * num_pad_dims
     pre_slice   = (slice(None),) * num_pad_dims

@@ -148,9 +148,13 @@ class Trainer():
         self.visualize_predictions = args.visualize_predictions
         if not os.path.exists(self.path):
             os.makedirs(self.path)
+        self.model_type = args.model_type
 
     def save(self, model, f1_score):
-        # model.save_pretrained(self.path)
+        if self.model_type == "distilbert":
+            model.save_pretrained(self.path)
+        else:
+            print(f"Unsupported model type: {self.model_type}")
         # TODO: add save model
         # save_file = os.path.join(self.save_dir, "saved_model_{:.3f}.pt".format(f1_score))
         # save_file_config = os.path.join(self.save_dir, "config_{:.3f}.json".format(f1_score))
@@ -160,6 +164,47 @@ class Trainer():
         return
 
     def evaluate(self, model, data_loader, data_dict, return_preds=False, split='validation'):
+        device = self.device
+
+        model.eval()
+        pred_dict = {}
+        all_start_logits = []
+        all_end_logits = []
+        with torch.no_grad(), \
+                tqdm(total=len(data_loader.dataset)) as progress_bar:
+            for batch in data_loader:
+                # Setup for forward
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                batch_size = len(input_ids)
+                outputs = model(input_ids, attention_mask=attention_mask)
+                # Forward
+                start_logits, end_logits = outputs.start_logits, outputs.end_logits
+                # TODO: compute loss
+
+                all_start_logits.append(start_logits)
+                all_end_logits.append(end_logits)
+                progress_bar.update(batch_size)
+
+        # Get F1 and EM scores
+        start_logits = torch.cat(all_start_logits).cpu().numpy()
+        end_logits = torch.cat(all_end_logits).cpu().numpy()
+        preds = util.postprocess_qa_predictions(data_dict,
+                                                 data_loader.dataset.encodings,
+                                                 (start_logits, end_logits))
+        if split == 'validation':
+            results = util.eval_dicts(data_dict, preds)
+            results_list = [('F1', results['F1']),
+                            ('EM', results['EM'])]
+        else:
+            results_list = [('F1', -1.0),
+                            ('EM', -1.0)]
+        results = OrderedDict(results_list)
+        if return_preds:
+            return preds, results
+        return results
+
+    def evaluate_moe(self, model, data_loader, data_dict, return_preds=False, split='validation'):
         device = self.device
 
         model.eval()
@@ -200,7 +245,7 @@ class Trainer():
             return preds, results
         return results
 
-    def train(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict):
+    def train(self, model, train_dataloader, eval_dataloader, val_dict, ood_dev_dataloader, ood_dev_dict):
         device = self.device
         model.to(device)
         optim = AdamW(model.parameters(), lr=self.lr)
@@ -215,13 +260,67 @@ class Trainer():
                     optim.zero_grad()
                     model.train()
                     input_ids = batch['input_ids'].to(device)
-                    # attention_mask = batch['attention_mask'].to(device)
+                    attention_mask = batch['attention_mask'].to(device)
                     start_positions = batch['start_positions'].to(device)
                     end_positions = batch['end_positions'].to(device)
-                    # outputs = model(input_ids, attention_mask=attention_mask,
-                    #                 start_positions=start_positions,
-                    #                 end_positions=end_positions)
+                    outputs = model(input_ids, attention_mask=attention_mask,
+                                    start_positions=start_positions,
+                                    end_positions=end_positions)
+                    loss = outputs[0]
+                    loss.backward()
+                    optim.step()
+                    progress_bar.update(len(input_ids))
+                    progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
+                    tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                    if (global_idx % self.eval_every) == 0:
+                        self.log.info(f'Evaluating at step {global_idx}...')
+                        preds, curr_score = self.evaluate(
+                            model, eval_dataloader, val_dict, return_preds=True)
+                        results_str = ', '.join(
+                            f'{k}: {v:05.2f}' for k, v in curr_score.items())
+                        self.log.info('Visualizing in TensorBoard...')
+                        for k, v in curr_score.items():
+                            tbx.add_scalar(f'val/{k}', v, global_idx)
+                        self.log.info(f'In domain {results_str}')
 
+                        preds, curr_score = self.evaluate(
+                            model, ood_dev_dataloader, ood_dev_dict, return_preds=True)
+                        results_str = ', '.join(
+                            f'{k}: {v:05.2f}' for k, v in curr_score.items())
+                        for k, v in curr_score.items():
+                            tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
+                        self.log.info(f'Out of domain {results_str}')
+
+                        if self.visualize_predictions:
+                            util.visualize(tbx,
+                                           pred_dict=preds,
+                                           gold_dict=val_dict,
+                                           step=global_idx,
+                                           split='val',
+                                           num_visuals=self.num_visuals)
+                        if curr_score['F1'] >= best_scores['F1']:
+                            best_scores = curr_score
+                            self.save(model, best_scores)
+                    global_idx += 1
+        return best_scores
+
+    def train_moe(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict):
+        device = self.device
+        model.to(device)
+        optim = AdamW(model.parameters(), lr=self.lr)
+        global_idx = 0
+        best_scores = {'F1': -1.0, 'EM': -1.0}
+        tbx = SummaryWriter(self.save_dir)
+
+        for epoch_num in range(self.num_epochs):
+            self.log.info(f'Epoch: {epoch_num}')
+            with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
+                for batch in train_dataloader:
+                    optim.zero_grad()
+                    model.train()
+                    input_ids = batch['input_ids'].to(device)
+                    start_positions = batch['start_positions'].to(device)
+                    end_positions = batch['end_positions'].to(device)
                     start_logits, end_logits, auc_loss = model(batch)
                     loss = 0
                     if start_positions is not None and end_positions is not None:
@@ -231,10 +330,12 @@ class Trainer():
                             end_positions = end_positions.squeeze(-1)
                         # sometimes the start/end positions are outside our model inputs, we ignore these terms
                         ignored_index = start_logits.size(1)
-                        start_positions = start_positions.clamp(0, ignored_index)
+                        start_positions = start_positions.clamp(
+                            0, ignored_index)
                         end_positions = end_positions.clamp(0, ignored_index)
 
-                        loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
+                        loss_fct = nn.CrossEntropyLoss(
+                            ignore_index=ignored_index)
                         start_loss = loss_fct(start_logits, start_positions)
                         end_loss = loss_fct(end_logits, end_positions)
                         loss = (start_loss + end_loss) / 2 + auc_loss
@@ -245,7 +346,7 @@ class Trainer():
                     tbx.add_scalar('train/NLL', loss.item(), global_idx)
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
-                        preds, curr_score = self.evaluate(
+                        preds, curr_score = self.evaluate_moe(
                             model, dev_dataloader, dev_dict, return_preds=True)
                         results_str = ', '.join(
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
@@ -254,7 +355,7 @@ class Trainer():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
                         self.log.info(f'In domain {results_str}')
 
-                        preds, curr_score = self.evaluate(
+                        preds, curr_score = self.evaluate_moe(
                             model, ood_dev_dataloader, ood_dev_dict, return_preds=True)
                         results_str = ', '.join(
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
@@ -292,33 +393,32 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name):
 def main():
     # define parser and arguments
     args = get_train_test_args()
-    input_size = 384 * 768
-    output_size = 384 * 2
-    num_experts = 10
-    hidden_size = 1024
-    k = 4
     util.set_seed(args.seed)
-    #model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
-    #model = MoE(input_size, output_size, num_experts,hidden_size, k=k, noisy_gating=True)
-    model = MoE(
-        dim=768,
-        # increase the experts (# parameters) of your model without increasing computation
-        num_experts=16,
-        # size of hidden dimension in each expert, defaults to 4 * dimension
-        hidden_dim=512 * 4,
-        activation=nn.LeakyReLU,      # use your preferred activation, will default to GELU
-        # in top_2 gating, policy for whether to use a second-place expert
-        second_policy_train='random',
-        # all (always) | none (never) | threshold (if gate value > the given threshold) | random (if gate value > threshold * random_uniform(0, 1))
-        second_policy_eval='random',
-        second_threshold_train=0.2,
-        second_threshold_eval=0.2,
-        # experts have fixed capacity per batch. we need some extra capacity in case gating is not perfectly balanced.
-        capacity_factor_train=1.25,
-        capacity_factor_eval=2.,      # capacity_factor_* should be set to a value >=1
-        # multiplier on the auxiliary expert balancing auxiliary loss
-        loss_coef=1e-2
-    )
+    if args.model_type == "distilbert":
+        model = DistilBertForQuestionAnswering.from_pretrained(
+            "distilbert-base-uncased")
+    else:
+        print("Using MoE")
+        model = MoE(
+            dim=768,
+            # increase the experts (# parameters) of your model without increasing computation
+            num_experts=16,
+            # size of hidden dimension in each expert, defaults to 4 * dimension
+            hidden_dim=768 * 4,
+            activation=nn.LeakyReLU,      # use your preferred activation, will default to GELU
+            # in top_2 gating, policy for whether to use a second-place expert
+            second_policy_train='random',
+            # all (always) | none (never) | threshold (if gate value > the given threshold) | random (if gate value > threshold * random_uniform(0, 1))
+            second_policy_eval='random',
+            second_threshold_train=0.2,
+            second_threshold_eval=0.2,
+            # experts have fixed capacity per batch. we need some extra capacity in case gating is not perfectly balanced.
+            capacity_factor_train=1.25,
+            capacity_factor_eval=2.,      # capacity_factor_* should be set to a value >=1
+            # multiplier on the auxiliary expert balancing auxiliary loss
+            loss_coef=1e-2
+        )
+
     tokenizer = DistilBertTokenizerFast.from_pretrained(
         'distilbert-base-uncased')
 
@@ -339,7 +439,7 @@ def main():
         log.info("Preparing Test Data...")
         ood_val_dataset, ood_val_dict = get_dataset(
             args, args.eval_datasets, "datasets/oodomain_val", tokenizer, "val")
-        
+
         trainer = Trainer(args, log)
         train_loader = DataLoader(train_dataset,
                                   batch_size=args.batch_size,
@@ -351,8 +451,12 @@ def main():
         ood_val_loader = DataLoader(ood_val_dataset,
                                     batch_size=args.batch_size,
                                     sampler=SequentialSampler(ood_val_dataset))
-        best_scores = trainer.train(
-            model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
+        if args.model_type == "distilbert":             
+            best_scores = trainer.train(
+                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
+        else:
+            best_scores = trainer.train_moe(
+                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
 
     if args.do_eval:
         args.device = torch.device(
@@ -362,7 +466,7 @@ def main():
         trainer = Trainer(args, log)
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
         # TODO: add loading model for MoE
-        #model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
+        model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
         model.to(args.device)
         eval_dataset, eval_dict = get_dataset(
             args, args.eval_datasets, args.eval_dir, tokenizer, split_name)

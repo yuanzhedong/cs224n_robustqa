@@ -2,7 +2,7 @@ import argparse
 
 def get_train_test_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch-size', type=int, default=256)
+    parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--num-epochs', type=int, default=300)
     parser.add_argument('--lr', type=float, default=3e-5)
     parser.add_argument('--num-visuals', type=int, default=10)
@@ -12,6 +12,7 @@ def get_train_test_args():
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--train-datasets', type=str, default='squad,nat_questions,newsqa')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
+    parser.add_argument('--model-type', type=str, default='distilbert')
     parser.add_argument('--recompute-features', action='store_true')
     parser.add_argument('--train-dir', type=str, default='datasets/indomain_train')
     parser.add_argument('--val-dir', type=str, default='datasets/indomain_val')

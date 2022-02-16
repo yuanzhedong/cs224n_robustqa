@@ -6,3 +6,20 @@
 - Train a baseline MTL system with `python train.py --do-train --eval-every 2000 --run-name baseline`
 - Evaluate the system on test set with `python train.py --do-eval --sub-file mtl_submission.csv --save-dir save/baseline-01`
 - Upload the csv file in `save/baseline-01` to the test leaderboard. For the validation leaderboard, run `python train.py --do-eval --sub-file mtl_submission_val.csv --save-dir save/baseline-01 --eval-dir datasets/oodomain_val`
+
+
+
+
+## Train baseline
+
+```
+python train.py --do-train --run-name baseline_distilbert --model-type distilbert
+```
+
+
+## Train MoE
+
+
+```
+python train.py --do-train --run-name baseline_moe --model-type moe
+```

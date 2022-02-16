@@ -256,6 +256,7 @@ class Trainer():
         #model.to(device)
         optim = AdamW(model.parameters(), lr=self.lr)
         global_idx = 0
+        k = 1
         best_scores = {'F1': -1.0, 'EM': -1.0}
         tbx = None
         if rank == 0:
@@ -281,10 +282,11 @@ class Trainer():
                     
                     progress_bar.update(len(input_ids))
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
-                    if dist.get_rank() == 0:
+                    if rank == 0:
                         tbx.add_scalar('train/NLL', loss.item(), global_idx)
-                    if (global_idx % self.eval_every) == 0 and  dist.get_rank() == 0:
+                    if (global_idx >= k * self.eval_every) and rank == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
+                        k += 1
                         preds, curr_score = self.evaluate(
                             model, eval_dataloader, val_dict, return_preds=True)
                         results_str = ', '.join(
@@ -312,7 +314,8 @@ class Trainer():
                         if curr_score['F1'] >= best_scores['F1']:
                             best_scores = curr_score
                             self.save(model, best_scores)
-                    global_idx += world_size
+                    if rank == 0:
+                        global_idx += world_size
         return best_scores
 
     def train_moe(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict):

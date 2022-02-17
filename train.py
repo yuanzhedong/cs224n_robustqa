@@ -155,9 +155,10 @@ class Trainer():
             os.makedirs(self.path)
         self.model_type = args.model_type
 
-    def save(self, model, f1_score):
+    def save(self, model, best_scores):
         if self.model_type == "distilbert":
             #model.save_pretrained(self.path)
+            f1_score = best_scores["F1"]
             torch.save(model.state_dict(), self.path + f"/model_f1_{f1_score}.pt")
         else:
             print(f"Unsupported model type: {self.model_type}")
@@ -256,7 +257,7 @@ class Trainer():
         #model.to(device)
         optim = AdamW(model.parameters(), lr=self.lr)
         global_idx = 0
-        k = 1
+        global_idx_count = 1
         best_scores = {'F1': -1.0, 'EM': -1.0}
         tbx = None
         if rank == 0:
@@ -284,9 +285,9 @@ class Trainer():
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                     if rank == 0:
                         tbx.add_scalar('train/NLL', loss.item(), global_idx)
-                    if (global_idx >= k * self.eval_every) and rank == 0:
+                    if (global_idx >= global_idx_count * self.eval_every) and rank == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
-                        k += 1
+                        global_idx_count += 1
                         preds, curr_score = self.evaluate(
                             model, eval_dataloader, val_dict, return_preds=True)
                         results_str = ', '.join(

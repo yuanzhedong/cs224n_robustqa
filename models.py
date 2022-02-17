@@ -261,6 +261,8 @@ class MoE(nn.Module):
         attention_mask = batch['attention_mask'].to(self.device)
         outputs = self.base_model(input_ids, attention_mask=attention_mask, start_positions=None, end_positions=None, output_hidden_states=True)
         inputs = outputs.hidden_states[-1]
+        import pdb
+        pdb.set_trace()
         b, n, d, e = *inputs.shape, self.num_experts
         dispatch_tensor, combine_tensor, auc_loss = self.gate(inputs)
         expert_inputs = torch.einsum('bnd,bnec->ebcd', inputs, dispatch_tensor)

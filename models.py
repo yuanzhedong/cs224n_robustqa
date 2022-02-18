@@ -243,9 +243,10 @@ class MoE(nn.Module):
         capacity_factor_train = 1.25,
         capacity_factor_eval = 2.,
         loss_coef = 1e-2,
-        experts = None):
+        experts = None,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         super().__init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
 
         self.num_experts = num_experts
 
@@ -259,10 +260,12 @@ class MoE(nn.Module):
     def forward(self, batch):
         input_ids = batch['input_ids'].to(self.device)
         attention_mask = batch['attention_mask'].to(self.device)
+        input_ids = batch['input_ids'].to(self.device)
+        start_positions = batch['start_positions'].to(self.device) if 'start_positions' in batch.keys() else None
+        end_positions = batch['end_positions'].to(self.device) if 'end_positions' in batch.keys() else None
+
         outputs = self.base_model(input_ids, attention_mask=attention_mask, start_positions=None, end_positions=None, output_hidden_states=True)
         inputs = outputs.hidden_states[-1]
-        import pdb
-        pdb.set_trace()
         b, n, d, e = *inputs.shape, self.num_experts
         dispatch_tensor, combine_tensor, auc_loss = self.gate(inputs)
         expert_inputs = torch.einsum('bnd,bnec->ebcd', inputs, dispatch_tensor)
@@ -278,4 +281,21 @@ class MoE(nn.Module):
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
         end_logits = end_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
-        return start_logits, end_logits, auc_loss
+
+        loss = auc_loss
+        if start_positions is not None and end_positions is not None:
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions = start_positions.clamp(
+                0, ignored_index)
+            end_positions = end_positions.clamp(0, ignored_index)
+
+            loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            loss = loss + (start_loss + end_loss) / 2
+        return start_logits, end_logits, loss

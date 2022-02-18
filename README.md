@@ -23,3 +23,20 @@ python train.py --do-train --run-name baseline_distilbert --model-type distilber
 ```
 python train.py --do-train --run-name baseline_moe --model-type moe
 ```
+
+## Tracking experiments with WandB
+### Set up the environment
+From the command line, install and log in to wandb
+
+```
+pip install wandb
+wandb login
+```
+
+Find your personal API key [](here). Copy this key and paste it into your command line when asked to authorize your account. 
+
+### View the jobs
+You can view the jobs in https://wandb.ai/cs224n-robustqa.
+
+### To enable tracking via distributed training
+TODO: https://docs.wandb.ai/guides/track/advanced/distributed-training

@@ -1,3 +1,4 @@
 datasets/*
 save/*
 __pycache__/*
+wandb/*

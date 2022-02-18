@@ -132,6 +132,11 @@ def data_augmentation(dataset_name, data_dict_collapsed):
                 new_data_dict_collapsed['answer'].append(new_answer_dict)
                 new_data_dict_collapsed['id'].append(str(idx_context)+"eda"+id_list[idx])
 
+    Save augmented data to JSON file
+    save_json_file = open("datasets/eda_"+dataset_name+".json", "w+")
+    save_json_file.write(json.dumps(new_data_dict_collapsed))
+    save_json_file.close()
+
     return shuffle_augment_data(new_data_dict_collapsed)
 
 

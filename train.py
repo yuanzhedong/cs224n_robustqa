@@ -25,6 +25,10 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 os.environ['MASTER_ADDR'] = 'localhost'
 os.environ['MASTER_PORT'] = '12355'
+import wandb
+
+
+
 
 def prepare_eval_data(dataset_dict, tokenizer):
     tokenized_examples = tokenizer(dataset_dict['question'],
@@ -303,6 +307,10 @@ class Trainer():
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                     if rank == 0:
                         tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                        wandb.log({
+                        "index": global_idx,
+                        "train/NLL": loss.item(),
+                        })
                     if (global_idx >= global_idx_count * self.eval_every) and rank == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
                         global_idx_count += 1
@@ -313,6 +321,7 @@ class Trainer():
                         self.log.info('Visualizing in TensorBoard...')
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
+                            wandb.log({f'val/{k}': v})
                         self.log.info(f'In domain {results_str}')
 
                         preds, curr_score = self.evaluate(
@@ -321,6 +330,7 @@ class Trainer():
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
+                            wandb.log({f'oodomain_val/{k}': v})
                         self.log.info(f'Out of domain {results_str}')
 
                         if self.visualize_predictions:
@@ -349,6 +359,7 @@ class Trainer():
         for epoch_num in range(self.num_epochs):
             if rank == 0:
                 self.log.info(f'Epoch: {epoch_num}')
+                wandb.log({'Epoch': epoch_num})
             with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
                 for batch in train_dataloader:
                     optim.zero_grad()
@@ -362,7 +373,11 @@ class Trainer():
                         progress_bar.update(len(input_ids)*world_size)
                         progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                         tbx.add_scalar('train/NLL', loss.item(), global_idx)
-                    if (global_idx >= global_idx_count * self.eval_every) and rank == 0:
+                        wandb.log({
+                            "index": global_idx,
+                            "train/NLL": loss.item(),
+                        })
+                    if (global_idx >= global_idx_count * self.eval_every) and rank == 0:                    
                         self.log.info(f'Evaluating at step {global_idx}...')
                         global_idx_count += 1
                         preds, curr_score = self.evaluate_moe(
@@ -372,6 +387,7 @@ class Trainer():
                         self.log.info('Visualizing in TensorBoard...')
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
+                            wandb.log({f'val/{k}': v})
                         self.log.info(f'In domain {results_str}')
 
                         preds, curr_score = self.evaluate_moe(
@@ -380,6 +396,7 @@ class Trainer():
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
+                            wandb.log({f'oodomain_val/{k}': v})
                         self.log.info(f'Out of domain {results_str}')
 
                         if self.visualize_predictions:
@@ -418,6 +435,11 @@ def main(rank, world_size, args):
     print(rank, world_size)
 
     util.set_seed(args.seed)
+    if rank == 0:
+        run = wandb.init(project="robustqa", entity="cs224n-robustqa")
+    else:
+        run = None
+
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
@@ -425,9 +447,9 @@ def main(rank, world_size, args):
         print("Using MoE")
         device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = MoE(
-            dim=768,
+            dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
-            num_experts=16,
+            num_experts=args.num_experts,
             # size of hidden dimension in each expert, defaults to 4 * dimension
             hidden_dim=768 * 4,
             activation=nn.LeakyReLU,      # use your preferred activation, will default to GELU
@@ -446,6 +468,9 @@ def main(rank, world_size, args):
         ).to(rank)
     model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
+    if rank == 0:
+        run.config.update(args)
+        run.watch(model)
 
     tokenizer = DistilBertTokenizerFast.from_pretrained(
         'distilbert-base-uncased')

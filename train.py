@@ -19,6 +19,10 @@ import torch.nn as nn
 
 from tqdm import tqdm
 
+import wandb
+
+wandb.init(project="robustqa", entity="cs224n-robustqa")
+
 
 def prepare_eval_data(dataset_dict, tokenizer):
     tokenized_examples = tokenizer(dataset_dict['question'],
@@ -252,7 +256,6 @@ class Trainer():
         global_idx = 0
         best_scores = {'F1': -1.0, 'EM': -1.0}
         tbx = SummaryWriter(self.save_dir)
-
         for epoch_num in range(self.num_epochs):
             self.log.info(f'Epoch: {epoch_num}')
             with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
@@ -272,6 +275,10 @@ class Trainer():
                     progress_bar.update(len(input_ids))
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                     tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                    wandb.log({
+                        "index": global_idx,
+                        "train/NLL": loss.item(),
+                    })
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate(
@@ -281,6 +288,7 @@ class Trainer():
                         self.log.info('Visualizing in TensorBoard...')
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
+                            wandb.log({f'val/{k}': v})
                         self.log.info(f'In domain {results_str}')
 
                         preds, curr_score = self.evaluate(
@@ -289,6 +297,7 @@ class Trainer():
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
+                            wandb.log({f'oodomain_val/{k}': v})
                         self.log.info(f'Out of domain {results_str}')
 
                         if self.visualize_predictions:
@@ -314,6 +323,7 @@ class Trainer():
 
         for epoch_num in range(self.num_epochs):
             self.log.info(f'Epoch: {epoch_num}')
+            wandb.log({'Epoch': epoch_num})
             with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
                 for batch in train_dataloader:
                     optim.zero_grad()
@@ -344,6 +354,10 @@ class Trainer():
                     progress_bar.update(len(input_ids))
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                     tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                    wandb.log({
+                        "index": global_idx,
+                        "train/NLL": loss.item(),
+                    })
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate_moe(
@@ -353,6 +367,7 @@ class Trainer():
                         self.log.info('Visualizing in TensorBoard...')
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
+                            wandb.log({f'val/{k}': v})
                         self.log.info(f'In domain {results_str}')
 
                         preds, curr_score = self.evaluate_moe(
@@ -361,6 +376,7 @@ class Trainer():
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
+                            wandb.log({f'oodomain_val/{k}': v})
                         self.log.info(f'Out of domain {results_str}')
 
                         if self.visualize_predictions:
@@ -400,9 +416,9 @@ def main():
     else:
         print("Using MoE")
         model = MoE(
-            dim=768,
+            dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
-            num_experts=16,
+            num_experts=args.num_experts,
             # size of hidden dimension in each expert, defaults to 4 * dimension
             hidden_dim=768 * 4,
             activation=nn.LeakyReLU,      # use your preferred activation, will default to GELU
@@ -418,7 +434,8 @@ def main():
             # multiplier on the auxiliary expert balancing auxiliary loss
             loss_coef=1e-2
         )
-
+    wandb.config.update(args)
+    wandb.watch(model)
     tokenizer = DistilBertTokenizerFast.from_pretrained(
         'distilbert-base-uncased')
 

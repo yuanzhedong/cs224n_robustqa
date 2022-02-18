@@ -2,7 +2,7 @@ import argparse
 
 def get_train_test_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--batch-size', type=int, default=16) # used to be 64, which exceeded memory
     parser.add_argument('--num-epochs', type=int, default=300)
     parser.add_argument('--lr', type=float, default=3e-5)
     parser.add_argument('--num-visuals', type=int, default=10)
@@ -23,5 +23,6 @@ def get_train_test_args():
     parser.add_argument('--sub-file', type=str, default='')
     parser.add_argument('--visualize-predictions', action='store_true')
     parser.add_argument('--eval-every', type=int, default=1000)
+    parser.add_argument('--eda', default=False, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
     args = parser.parse_args()
     return args

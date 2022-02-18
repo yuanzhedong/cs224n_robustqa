@@ -19,6 +19,9 @@ import torch.nn as nn
 
 from tqdm import tqdm
 
+# for data augmentation
+import perform_eda
+
 
 def prepare_eval_data(dataset_dict, tokenizer):
     tokenized_examples = tokenizer(dataset_dict['question'],
@@ -377,6 +380,20 @@ class Trainer():
         return best_scores
 
 
+def get_eda_dataset(args, datasets, data_dir, tokenizer, split_name):
+    datasets = datasets.split(',')
+    dataset_dict = None
+    dataset_name = ''
+    for dataset in datasets:
+        dataset_name += f'_{dataset}'
+        #dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
+        dataset_dict_curr = perform_eda.perform_eda(f'{data_dir}/{dataset}', dataset, train_fraction)
+        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+    data_encodings = read_and_process(
+        args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+    return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
+
+
 def get_dataset(args, datasets, data_dir, tokenizer, split_name):
     datasets = datasets.split(',')
     dataset_dict = None
@@ -431,8 +448,14 @@ def main():
         log.info("Preparing Training Data...")
         args.device = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
-        train_dataset, _ = get_dataset(
+
+        if args.eda == False:
+            train_dataset, _ = get_dataset(
             args, args.train_datasets, args.train_dir, tokenizer, 'train')
+        else:
+            train_dataset, _ = get_eda_dataset(
+                args, args.train_datasets, args.train_dir, tokenizer, 'train')
+
         log.info("Preparing Validation Data...")
         val_dataset, val_dict = get_dataset(
             args, args.train_datasets, args.val_dir, tokenizer, 'val')

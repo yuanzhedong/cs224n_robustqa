@@ -33,8 +33,7 @@ pip install wandb
 wandb login
 ```
 
-Copy this key and paste it into your command line when asked to authorize your account. This belongs to our team:
-`be441272f3bd2812a2eb009739e26a202f14d7ba`
+Find your personal API key [](here). Copy this key and paste it into your command line when asked to authorize your account. 
 
 ### View the jobs
 You can view the jobs in https://wandb.ai/cs224n-robustqa.

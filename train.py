@@ -25,6 +25,8 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 os.environ['MASTER_ADDR'] = 'localhost'
 os.environ['MASTER_PORT'] = '12355'
+# for data augmentation
+import perform_eda
 import wandb
 
 
@@ -416,6 +418,20 @@ class Trainer():
         return best_scores
 
 
+def get_eda_dataset(args, datasets, data_dir, tokenizer, split_name):
+    datasets = datasets.split(',')
+    dataset_dict = None
+    dataset_name = ''
+    for dataset in datasets:
+        dataset_name += f'_{dataset}'
+        #dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
+        dataset_dict_curr = perform_eda.perform_eda(f'{data_dir}/{dataset}', dataset)
+        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+    data_encodings = read_and_process(
+        args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+    return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
+
+
 def get_dataset(args, datasets, data_dir, tokenizer, split_name):
     datasets = datasets.split(',')
     dataset_dict = None
@@ -483,10 +499,16 @@ def main(rank, world_size, args):
         log.info("Preparing Training Data...")
         args.device = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
-        train_dataset, _ = get_dataset(
+
+        if args.eda == False:
+            train_dataset, _ = get_dataset(
             args, args.train_datasets, args.train_dir, tokenizer, 'train')
+        else:
+            train_dataset, _ = get_eda_dataset(
+                args, args.train_datasets, args.train_dir, tokenizer, 'train')
         log.info("Done loading training dataset")
         sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler= sampler)

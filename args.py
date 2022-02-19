@@ -24,7 +24,9 @@ def get_train_test_args():
     parser.add_argument('--visualize-predictions', action='store_true')
     parser.add_argument('--eval-every', type=int, default=500)
     parser.add_argument('--dim', type=int, default=768)
-    parser.add_argument('--num_experts', type=int, default=12)
-    parser.add_argument('--hidden_dim', type=int, default=1024)
+    parser.add_argument('--num_experts', type=int, default=16)
+    parser.add_argument('--hidden_dim', type=int, default=768 * 4)
+    parser.add_argument('--eda', default=False, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
+
     args = parser.parse_args()
     return args

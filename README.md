@@ -24,6 +24,12 @@ python train.py --do-train --run-name baseline_distilbert --model-type distilber
 python train.py --do-train --run-name baseline_moe --model-type moe
 ```
 
+Train with Data Augmentation
+
+```
+python train.py --do-train --run-name baseline_moe --model-type moe --eda true 
+```
+
 ## Tracking experiments with WandB
 ### Set up the environment
 From the command line, install and log in to wandb

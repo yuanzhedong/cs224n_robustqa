@@ -451,7 +451,7 @@ def main(rank, world_size, args):
             # increase the experts (# parameters) of your model without increasing computation
             num_experts=args.num_experts,
             # size of hidden dimension in each expert, defaults to 4 * dimension
-            hidden_dim=768 * 4,
+            hidden_dim=args.hidden_dim,
             activation=nn.LeakyReLU,      # use your preferred activation, will default to GELU
             # in top_2 gating, policy for whether to use a second-place expert
             second_policy_train='random',

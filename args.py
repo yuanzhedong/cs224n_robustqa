@@ -2,8 +2,8 @@ import argparse
 
 def get_train_test_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch-size', type=int, default=32)
-    parser.add_argument('--num-epochs', type=int, default=5)
+    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--num-epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=3e-5)
     parser.add_argument('--num-visuals', type=int, default=10)
     parser.add_argument('--seed', type=int, default=42)
@@ -22,9 +22,9 @@ def get_train_test_args():
     parser.add_argument('--do-eval', action='store_true')
     parser.add_argument('--sub-file', type=str, default='')
     parser.add_argument('--visualize-predictions', action='store_true')
-    parser.add_argument('--eval-every', type=int, default=1000)
+    parser.add_argument('--eval-every', type=int, default=500)
     parser.add_argument('--dim', type=int, default=768)
-    parser.add_argument('--num_experts', type=int, default=16)
-    parser.add_argument('--hidden_dim', type=int, default=768 * 4)
+    parser.add_argument('--num_experts', type=int, default=12)
+    parser.add_argument('--hidden_dim', type=int, default=1024)
     args = parser.parse_args()
     return args

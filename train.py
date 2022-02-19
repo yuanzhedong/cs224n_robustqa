@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 from collections import OrderedDict
+from tkinter import N
 import torch
 import csv
 import util
@@ -19,12 +20,16 @@ import torch.nn as nn
 
 from tqdm import tqdm
 
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+os.environ['MASTER_ADDR'] = 'localhost'
+os.environ['MASTER_PORT'] = '12355'
 # for data augmentation
 import perform_eda
-
 import wandb
 
-wandb.init(project="robustqa", entity="cs224n-robustqa")
+
 
 
 def prepare_eval_data(dataset_dict, tokenizer):
@@ -157,9 +162,11 @@ class Trainer():
             os.makedirs(self.path)
         self.model_type = args.model_type
 
-    def save(self, model, f1_score):
+    def save(self, model, best_scores):
         if self.model_type == "distilbert":
-            model.save_pretrained(self.path)
+            #model.save_pretrained(self.path)
+            f1_score = best_scores["F1"]
+            torch.save(model.state_dict(), self.path + f"/model_f1_{f1_score}.pt")
         else:
             print(f"Unsupported model type: {self.model_type}")
         # TODO: add save model
@@ -211,6 +218,7 @@ class Trainer():
             return preds, results
         return results
 
+    # eval on devset
     def evaluate_moe(self, model, data_loader, data_dict, return_preds=False, split='validation'):
         device = self.device
 
@@ -225,7 +233,7 @@ class Trainer():
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
                 batch_size = len(input_ids)
-                start_logits, end_logits, aux_loss = model(batch)
+                start_logits, end_logits, loss = model(batch)
                 start_logits = start_logits.squeeze(-1)
                 end_logits = end_logits.squeeze(-1)
                 # TODO: compute loss
@@ -251,39 +259,63 @@ class Trainer():
         if return_preds:
             return preds, results
         return results
+    
+    # Save test set results to disk for MoE
+    def test_moe(self, model, eval_loader, eval_dict, save_dir):
+        eval_preds, eval_scores = self.evaluate_moe(model, eval_loader, eval_dict, return_preds=True, split="test")
+        results_str = ', '.join(
+            f'{k}: {v:05.2f}' for k, v in eval_scores.items())
+        self.log.info(f'Eval {results_str}')
+        # Write submission file
+        sub_path = os.path.join(save_dir, "test")
+        self.log.info(f'Writing submission file to {sub_path}...')
+        with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
+            csv_writer = csv.writer(csv_fh, delimiter=',')
+            csv_writer.writerow(['Id', 'Predicted'])
+            for uuid in sorted(eval_preds):
+                csv_writer.writerow([uuid, eval_preds[uuid]])
 
-    def train(self, model, train_dataloader, eval_dataloader, val_dict, ood_dev_dataloader, ood_dev_dict):
-        device = self.device
-        model.to(device)
+
+    def train(self, model, train_dataloader, eval_dataloader, val_dict, ood_dev_dataloader, ood_dev_dict, rank, world_size):
+        #device = self.device
+        #model.to(device)
         optim = AdamW(model.parameters(), lr=self.lr)
         global_idx = 0
+        global_idx_count = 1
         best_scores = {'F1': -1.0, 'EM': -1.0}
-        tbx = SummaryWriter(self.save_dir)
+        tbx = None
+        if rank == 0:
+            tbx = SummaryWriter(self.save_dir)
+
         for epoch_num in range(self.num_epochs):
-            self.log.info(f'Epoch: {epoch_num}')
-            with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
+            if rank == 0:
+                self.log.info(f'Epoch: {epoch_num}')
+            with torch.enable_grad(), tqdm(total=int(len(train_dataloader.dataset))) as progress_bar:
                 for batch in train_dataloader:
                     optim.zero_grad()
                     model.train()
-                    input_ids = batch['input_ids'].to(device)
-                    attention_mask = batch['attention_mask'].to(device)
-                    start_positions = batch['start_positions'].to(device)
-                    end_positions = batch['end_positions'].to(device)
+                    input_ids = batch['input_ids'].to(rank)
+                    attention_mask = batch['attention_mask'].to(rank)
+                    start_positions = batch['start_positions'].to(rank)
+                    end_positions = batch['end_positions'].to(rank)
                     outputs = model(input_ids, attention_mask=attention_mask,
                                     start_positions=start_positions,
                                     end_positions=end_positions)
                     loss = outputs[0]
                     loss.backward()
                     optim.step()
-                    progress_bar.update(len(input_ids))
+                    
+                    progress_bar.update(len(input_ids) * world_size)
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
-                    tbx.add_scalar('train/NLL', loss.item(), global_idx)
-                    wandb.log({
+                    if rank == 0:
+                        tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                        wandb.log({
                         "index": global_idx,
                         "train/NLL": loss.item(),
-                    })
-                    if (global_idx % self.eval_every) == 0:
+                        })
+                    if (global_idx >= global_idx_count * self.eval_every) and rank == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
+                        global_idx_count += 1
                         preds, curr_score = self.evaluate(
                             model, eval_dataloader, val_dict, return_preds=True)
                         results_str = ', '.join(
@@ -313,56 +345,45 @@ class Trainer():
                         if curr_score['F1'] >= best_scores['F1']:
                             best_scores = curr_score
                             self.save(model, best_scores)
-                    global_idx += 1
+                        for k, v in best_scores.items():
+                            wandb.log({f'oodomain_val/best_{k}': v})
+                    if rank == 0:
+                        global_idx += world_size
         return best_scores
 
-    def train_moe(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict):
-        device = self.device
-        model.to(device)
+    def train_moe(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict, test_dataloader, test_dict, rank, world_size):
         optim = AdamW(model.parameters(), lr=self.lr)
         global_idx = 0
+        global_idx_count = 1
         best_scores = {'F1': -1.0, 'EM': -1.0}
-        tbx = SummaryWriter(self.save_dir)
+        tbx = None
+        if rank == 0:
+            tbx = SummaryWriter(self.save_dir)
 
         for epoch_num in range(self.num_epochs):
-            self.log.info(f'Epoch: {epoch_num}')
-            wandb.log({'Epoch': epoch_num})
+            if rank == 0:
+                self.log.info(f'Epoch: {epoch_num}')
+                wandb.log({'Epoch': epoch_num})
             with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
                 for batch in train_dataloader:
                     optim.zero_grad()
                     model.train()
-                    input_ids = batch['input_ids'].to(device)
-                    start_positions = batch['start_positions'].to(device)
-                    end_positions = batch['end_positions'].to(device)
-                    start_logits, end_logits, auc_loss = model(batch)
-                    loss = 0
-                    if start_positions is not None and end_positions is not None:
-                        if len(start_positions.size()) > 1:
-                            start_positions = start_positions.squeeze(-1)
-                        if len(end_positions.size()) > 1:
-                            end_positions = end_positions.squeeze(-1)
-                        # sometimes the start/end positions are outside our model inputs, we ignore these terms
-                        ignored_index = start_logits.size(1)
-                        start_positions = start_positions.clamp(
-                            0, ignored_index)
-                        end_positions = end_positions.clamp(0, ignored_index)
-
-                        loss_fct = nn.CrossEntropyLoss(
-                            ignore_index=ignored_index)
-                        start_loss = loss_fct(start_logits, start_positions)
-                        end_loss = loss_fct(end_logits, end_positions)
-                        loss = (start_loss + end_loss) / 2 + auc_loss
+                    input_ids = batch['input_ids'].to(rank)
+                    start_logits, end_logits, loss = model(batch)
                     loss.backward()
                     optim.step()
-                    progress_bar.update(len(input_ids))
-                    progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
-                    tbx.add_scalar('train/NLL', loss.item(), global_idx)
-                    wandb.log({
-                        "index": global_idx,
-                        "train/NLL": loss.item(),
-                    })
-                    if (global_idx % self.eval_every) == 0:
+                    
+                    if rank == 0:
+                        progress_bar.update(len(input_ids)*world_size)
+                        progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
+                        tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                        wandb.log({
+                            "index": global_idx,
+                            "train/NLL": loss.item(),
+                        })
+                    if (global_idx >= global_idx_count * self.eval_every) and rank == 0:                    
                         self.log.info(f'Evaluating at step {global_idx}...')
+                        global_idx_count += 1
                         preds, curr_score = self.evaluate_moe(
                             model, dev_dataloader, dev_dict, return_preds=True)
                         results_str = ', '.join(
@@ -391,8 +412,11 @@ class Trainer():
                                            num_visuals=self.num_visuals)
                         if curr_score['F1'] >= best_scores['F1']:
                             best_scores = curr_score
-                            self.save(model, curr_score['F1'])
-                    global_idx += 1
+                            #self.save(model, curr_score['F1'])
+                            self.log.info("Infer on testset...")
+                            self.test_moe(model, test_dataloader, test_dict, self.save_dir)
+                    if rank == 0:
+                        global_idx += world_size
         return best_scores
 
 
@@ -430,21 +454,29 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name):
     return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
 
 
-def main():
+def main(rank, world_size, args):
     # define parser and arguments
-    args = get_train_test_args()
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    print(rank, world_size)
+
     util.set_seed(args.seed)
+    if rank == 0:
+        run = wandb.init(project="robustqa", entity="cs224n-robustqa")
+    else:
+        run = None
+
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
-            "distilbert-base-uncased")
+            "distilbert-base-uncased").to(rank)
     else:
         print("Using MoE")
+        device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = MoE(
             dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
             num_experts=args.num_experts,
             # size of hidden dimension in each expert, defaults to 4 * dimension
-            hidden_dim=768 * 4,
+            hidden_dim=args.hidden_dim,
             activation=nn.LeakyReLU,      # use your preferred activation, will default to GELU
             # in top_2 gating, policy for whether to use a second-place expert
             second_policy_train='random',
@@ -456,17 +488,19 @@ def main():
             capacity_factor_train=1.25,
             capacity_factor_eval=2.,      # capacity_factor_* should be set to a value >=1
             # multiplier on the auxiliary expert balancing auxiliary loss
-            loss_coef=1e-2
-        )
-    wandb.config.update(args)
-    wandb.watch(model)
+            loss_coef=1e-2,
+            device=device
+        ).to(rank)
+    model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+
+    if rank == 0:
+        run.config.update(args)
+        run.watch(model)
+
     tokenizer = DistilBertTokenizerFast.from_pretrained(
         'distilbert-base-uncased')
 
     if args.do_train:
-        if not os.path.exists(args.save_dir):
-            os.makedirs(args.save_dir)
-        args.save_dir = util.get_save_dir(args.save_dir, args.run_name)
         log = util.get_logger(args.save_dir, 'log_train')
         log.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
         log.info("Preparing Training Data...")
@@ -479,31 +513,47 @@ def main():
         else:
             train_dataset, _ = get_eda_dataset(
                 args, args.train_datasets, args.train_dir, tokenizer, 'train')
+        log.info("Done loading training dataset")
+        sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
 
-        log.info("Preparing Validation Data...")
-        val_dataset, val_dict = get_dataset(
-            args, args.train_datasets, args.val_dir, tokenizer, 'val')
-        log.info("Preparing Test Data...")
-        ood_val_dataset, ood_val_dict = get_dataset(
-            args, args.eval_datasets, "datasets/oodomain_val", tokenizer, "val")
-
-        trainer = Trainer(args, log)
         train_loader = DataLoader(train_dataset,
-                                  batch_size=args.batch_size,
-                                  sampler=RandomSampler(train_dataset))
-        val_loader = DataLoader(val_dataset,
                                 batch_size=args.batch_size,
-                                sampler=SequentialSampler(val_dataset))
+                                sampler= sampler)
+        trainer = Trainer(args, log)
+        #sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
+ 
 
-        ood_val_loader = DataLoader(ood_val_dataset,
+        val_loader = None
+        val_dict = None
+        ood_val_loader = None
+        ood_val_dict = None
+        test_loader = None
+        test_dict = None
+        if (rank == 0):
+            log.info("Preparing Validation Data...")
+            val_dataset, val_dict = get_dataset(
+                args, args.train_datasets, args.val_dir, tokenizer, 'val')
+            log.info("Preparing Test Data...")
+            ood_val_dataset, ood_val_dict = get_dataset(
+                args, args.eval_datasets, "datasets/oodomain_val", tokenizer, "val")
+
+            val_loader = DataLoader(val_dataset,
                                     batch_size=args.batch_size,
-                                    sampler=SequentialSampler(ood_val_dataset))
+                                    sampler=SequentialSampler(val_dataset))
+
+            ood_val_loader = DataLoader(ood_val_dataset,
+                                        batch_size=args.batch_size,
+                                        sampler=SequentialSampler(ood_val_dataset))
+
+            test_dataset, test_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, "test")
+            test_loader = DataLoader(test_dataset, batch_size=args.batch_size,sampler=SequentialSampler(test_dataset))
+
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
-                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
+                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
         else:
             best_scores = trainer.train_moe(
-                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
+                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size)
 
     if args.do_eval:
         args.device = torch.device(
@@ -538,4 +588,11 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    world_size = torch.cuda.device_count()
+    args = get_train_test_args()
+    os.makedirs(args.save_dir, exist_ok=True)
+    args.save_dir = util.get_save_dir(args.save_dir, args.run_name)    
+    mp.spawn(main,
+        args=(world_size, args,),
+        nprocs=world_size,
+        join=True)

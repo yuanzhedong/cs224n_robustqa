@@ -260,7 +260,6 @@ class MoE(nn.Module):
     def forward(self, batch):
         input_ids = batch['input_ids'].to(self.device)
         attention_mask = batch['attention_mask'].to(self.device)
-        input_ids = batch['input_ids'].to(self.device)
         start_positions = batch['start_positions'].to(self.device) if 'start_positions' in batch.keys() else None
         end_positions = batch['end_positions'].to(self.device) if 'end_positions' in batch.keys() else None
 

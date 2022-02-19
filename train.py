@@ -492,8 +492,6 @@ def main(rank, world_size, args):
         'distilbert-base-uncased')
 
     if args.do_train:
-
-        #args.save_dir = util.get_save_dir(args.save_dir, args.run_name)
         log = util.get_logger(args.save_dir, 'log_train')
         log.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
         log.info("Preparing Training Data...")
@@ -583,8 +581,7 @@ def main(rank, world_size, args):
 if __name__ == '__main__':
     world_size = torch.cuda.device_count()
     args = get_train_test_args()
-    if not os.path.exists(args.save_dir):
-        os.makedirs(args.save_dir)
+    os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name)    
     mp.spawn(main,
         args=(world_size, args,),

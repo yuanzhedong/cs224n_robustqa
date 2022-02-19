@@ -400,13 +400,20 @@ def get_eda_dataset(args, datasets, data_dir, tokenizer, split_name):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name = ''
+
     for dataset in datasets:
         dataset_name += f'_{dataset}'
-        #dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
-        dataset_dict_curr = perform_eda.perform_eda(args, f'{data_dir}/{dataset}', dataset)
-        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
-    data_encodings = read_and_process(
-        args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+    cache_path = f'{data_dir}/{dataset_name}_encodings.pt'
+    if os.path.exists(cache_path) and not args.recompute_features: # to avoid recomputing encodings.pt
+        data_encodings = util.load_pickle(cache_path)
+    else:
+        for dataset in datasets:
+            #dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
+            dataset_dict_curr = perform_eda.perform_eda(args, f'{data_dir}/{dataset}', dataset)
+            dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+        data_encodings = read_and_process(
+            args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+
     return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
 
 

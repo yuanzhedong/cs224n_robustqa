@@ -32,6 +32,6 @@ def get_train_test_args():
     parser.add_argument("--alpha_ri", required=False, type=float, help="percent of words in each sentence to be inserted")
     parser.add_argument("--alpha_rs", required=False, type=float, help="percent of words in each sentence to be swapped")
     parser.add_argument("--alpha_rd", required=False, type=float, help="percent of words in each sentence to be deleted")
-
+    parser.add_argument('--recompute_features', default=True, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
     args = parser.parse_args()
     return args

@@ -15,3 +15,4 @@ dependencies:
     - tensorflow
     - tensorboardX
     - wandb
+    - nltk

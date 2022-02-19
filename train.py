@@ -19,14 +19,12 @@ import torch.nn as nn
 
 from tqdm import tqdm
 
-<<<<<<< HEAD
 # for data augmentation
 import perform_eda
-=======
+
 import wandb
 
 wandb.init(project="robustqa", entity="cs224n-robustqa")
->>>>>>> 5d010ba4bc93ef169bbdda002c5e39583146390e
 
 
 def prepare_eval_data(dataset_dict, tokenizer):

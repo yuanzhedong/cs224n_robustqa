@@ -345,6 +345,8 @@ class Trainer():
                         if curr_score['F1'] >= best_scores['F1']:
                             best_scores = curr_score
                             self.save(model, best_scores)
+                        for k, v in best_scores.items():
+                            wandb.log({f'oodomain_val/best_{k}': v})
                     if rank == 0:
                         global_idx += world_size
         return best_scores

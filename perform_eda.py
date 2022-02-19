@@ -149,6 +149,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
        # operate eda on every context
         context = clean_line(context_list[idx])
         aug_contexts = eda.eda(context, answer_words, alpha_sr, alpha_ri, alpha_rs, alpha_rd, num_aug)
+        #print("augmented versions:", len(aug_contexts))
         for idx_context, aug_context in enumerate(aug_contexts):
             aug_context = clean_line(aug_context)
             new_answer_dict = {'answer_start': [], 'text': []}

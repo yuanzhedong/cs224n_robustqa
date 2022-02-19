@@ -21,10 +21,9 @@ from tqdm import tqdm
 
 # for data augmentation
 import perform_eda
+#import wandb
 
-import wandb
-
-wandb.init(project="robustqa", entity="cs224n-robustqa")
+#wandb.init(project="robustqa", entity="cs224n-robustqa")
 
 
 def prepare_eval_data(dataset_dict, tokenizer):
@@ -278,10 +277,10 @@ class Trainer():
                     progress_bar.update(len(input_ids))
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                     tbx.add_scalar('train/NLL', loss.item(), global_idx)
-                    wandb.log({
-                        "index": global_idx,
-                        "train/NLL": loss.item(),
-                    })
+                    # wandb.log({
+                    #     "index": global_idx,
+                    #     "train/NLL": loss.item(),
+                    # })
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate(
@@ -291,7 +290,7 @@ class Trainer():
                         self.log.info('Visualizing in TensorBoard...')
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
-                            wandb.log({f'val/{k}': v})
+                            #wandb.log({f'val/{k}': v})
                         self.log.info(f'In domain {results_str}')
 
                         preds, curr_score = self.evaluate(
@@ -300,7 +299,7 @@ class Trainer():
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
-                            wandb.log({f'oodomain_val/{k}': v})
+                            #wandb.log({f'oodomain_val/{k}': v})
                         self.log.info(f'Out of domain {results_str}')
 
                         if self.visualize_predictions:
@@ -326,7 +325,7 @@ class Trainer():
 
         for epoch_num in range(self.num_epochs):
             self.log.info(f'Epoch: {epoch_num}')
-            wandb.log({'Epoch': epoch_num})
+            #wandb.log({'Epoch': epoch_num})
             with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
                 for batch in train_dataloader:
                     optim.zero_grad()
@@ -357,10 +356,10 @@ class Trainer():
                     progress_bar.update(len(input_ids))
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                     tbx.add_scalar('train/NLL', loss.item(), global_idx)
-                    wandb.log({
-                        "index": global_idx,
-                        "train/NLL": loss.item(),
-                    })
+                    # wandb.log({
+                    #     "index": global_idx,
+                    #     "train/NLL": loss.item(),
+                    # })
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate_moe(
@@ -370,7 +369,7 @@ class Trainer():
                         self.log.info('Visualizing in TensorBoard...')
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
-                            wandb.log({f'val/{k}': v})
+                            #wandb.log({f'val/{k}': v})
                         self.log.info(f'In domain {results_str}')
 
                         preds, curr_score = self.evaluate_moe(
@@ -379,7 +378,7 @@ class Trainer():
                             f'{k}: {v:05.2f}' for k, v in curr_score.items())
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'oodomain_val/{k}', v, global_idx)
-                            wandb.log({f'oodomain_val/{k}': v})
+                            #wandb.log({f'oodomain_val/{k}': v})
                         self.log.info(f'Out of domain {results_str}')
 
                         if self.visualize_predictions:
@@ -451,8 +450,8 @@ def main():
             # multiplier on the auxiliary expert balancing auxiliary loss
             loss_coef=1e-2
         )
-    wandb.config.update(args)
-    wandb.watch(model)
+    # wandb.config.update(args)
+    # wandb.watch(model)
     tokenizer = DistilBertTokenizerFast.from_pretrained(
         'distilbert-base-uncased')
 
@@ -473,30 +472,30 @@ def main():
             train_dataset, _ = get_eda_dataset(
                 args, args.train_datasets, args.train_dir, tokenizer, 'train')
 
-        log.info("Preparing Validation Data...")
-        val_dataset, val_dict = get_dataset(
-            args, args.train_datasets, args.val_dir, tokenizer, 'val')
-        log.info("Preparing Test Data...")
-        ood_val_dataset, ood_val_dict = get_dataset(
-            args, args.eval_datasets, "datasets/oodomain_val", tokenizer, "val")
+        # log.info("Preparing Validation Data...")
+        # val_dataset, val_dict = get_dataset(
+        #     args, args.train_datasets, args.val_dir, tokenizer, 'val')
+        # log.info("Preparing Test Data...")
+        # ood_val_dataset, ood_val_dict = get_dataset(
+        #     args, args.eval_datasets, "datasets/oodomain_val", tokenizer, "val")
 
-        trainer = Trainer(args, log)
-        train_loader = DataLoader(train_dataset,
-                                  batch_size=args.batch_size,
-                                  sampler=RandomSampler(train_dataset))
-        val_loader = DataLoader(val_dataset,
-                                batch_size=args.batch_size,
-                                sampler=SequentialSampler(val_dataset))
+        # trainer = Trainer(args, log)
+        # train_loader = DataLoader(train_dataset,
+        #                           batch_size=args.batch_size,
+        #                           sampler=RandomSampler(train_dataset))
+        # val_loader = DataLoader(val_dataset,
+        #                         batch_size=args.batch_size,
+        #                         sampler=SequentialSampler(val_dataset))
 
-        ood_val_loader = DataLoader(ood_val_dataset,
-                                    batch_size=args.batch_size,
-                                    sampler=SequentialSampler(ood_val_dataset))
-        if args.model_type == "distilbert":             
-            best_scores = trainer.train(
-                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
-        else:
-            best_scores = trainer.train_moe(
-                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
+        # ood_val_loader = DataLoader(ood_val_dataset,
+        #                             batch_size=args.batch_size,
+        #                             sampler=SequentialSampler(ood_val_dataset))
+        # if args.model_type == "distilbert":             
+        #     best_scores = trainer.train(
+        #         model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
+        # else:
+        #     best_scores = trainer.train_moe(
+        #         model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict)
 
     if args.do_eval:
         args.device = torch.device(

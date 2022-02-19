@@ -196,7 +196,14 @@ def eda(sentence, answer_words=[], alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_r
 	num_words = len(words)
 	
 	augmented_sentences = []
-	num_new_per_technique = int(num_aug/4)+1
+	#num_new_per_technique = int(num_aug/4)+1
+	# julie changed: we want to make sure we return num_aug of augmented versions, even when some techniques are not used
+	n_techniques_applied = 0
+	if alpha_sr > 0: n_techniques_applied += 1
+	if alpha_ri > 0: n_techniques_applied += 1
+	if alpha_rs > 0: n_techniques_applied += 1
+	if p_rd > 0: n_techniques_applied += 1
+	num_new_per_technique = int(num_aug/n_techniques_applied)+1
 
 	#sr
 	if (alpha_sr > 0):

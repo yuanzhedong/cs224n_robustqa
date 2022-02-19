@@ -27,6 +27,11 @@ def get_train_test_args():
     parser.add_argument('--num_experts', type=int, default=16)
     parser.add_argument('--hidden_dim', type=int, default=768 * 4)
     parser.add_argument('--eda', default=False, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
+    parser.add_argument("--num_aug", required=False, type=int, help="number of augmented sentences per original sentence")
+    parser.add_argument("--alpha_sr", required=False, type=float, help="percent of words in each sentence to be replaced by synonyms")
+    parser.add_argument("--alpha_ri", required=False, type=float, help="percent of words in each sentence to be inserted")
+    parser.add_argument("--alpha_rs", required=False, type=float, help="percent of words in each sentence to be swapped")
+    parser.add_argument("--alpha_rd", required=False, type=float, help="percent of words in each sentence to be deleted")
 
     args = parser.parse_args()
     return args

@@ -1,4 +1,4 @@
-# Easy data augmentation techniques for text classification  -> COMPLETELY THE SAME CODE OTHER THAN LINE 175
+# Easy data augmentation techniques for text classification
 # Jason Wei and Kai Zou
 
 import random
@@ -31,6 +31,9 @@ stop_words = ['i', 'me', 'my', 'myself', 'we', 'our',
 #cleaning up text
 import re
 
+def check_word(word, answer_words):
+	return (word not in stop_words) and (word not in answer_words) and word.isalpha()
+	
 # def get_only_chars(line):
 
 #     clean_line = ""
@@ -59,13 +62,15 @@ import re
 ########################################################################
 
 #for the first time you use wordnet
-#import nltk
-#nltk.download('wordnet')
+import nltk
+nltk.download('wordnet')
+nltk.download('omw-1.4')
+
 from nltk.corpus import wordnet 
 
-def synonym_replacement(words, n):
+def synonym_replacement(words, n, answer_words):
 	new_words = words.copy()
-	random_word_list = list(set([word for word in words if word not in stop_words]))
+	random_word_list = list(set([word for word in words if check_word(word, answer_words)]))
 	random.shuffle(random_word_list)
 	num_replaced = 0
 	for random_word in random_word_list:
@@ -100,7 +105,7 @@ def get_synonyms(word):
 # Randomly delete words from the sentence with probability p
 ########################################################################
 
-def random_deletion(words, p):
+def random_deletion(words, p, answer_words):
 
 	#obviously, if there's only one word, don't delete it
 	if len(words) == 1:
@@ -109,9 +114,12 @@ def random_deletion(words, p):
 	#randomly delete words with probability p
 	new_words = []
 	for word in words:
-		r = random.uniform(0, 1)
-		if r > p:
+		if word in answer_words:
 			new_words.append(word)
+		else:
+			r = random.uniform(0, 1)
+			if r > p:
+				new_words.append(word)
 
 	#if you end up deleting all words, just return a random word
 	if len(new_words) == 0:
@@ -125,20 +133,21 @@ def random_deletion(words, p):
 # Randomly swap two words in the sentence n times
 ########################################################################
 
-def random_swap(words, n):
+def random_swap(words, n, answer_words):
 	new_words = words.copy()
 	for _ in range(n):
-		new_words = swap_word(new_words)
+		new_words = swap_word(new_words, answer_words)
 	return new_words
 
-def swap_word(new_words):
-	random_idx_1 = random.randint(0, len(new_words)-1)
+def swap_word(new_words, answer_words):
+	random_idx_1 = 0
 	random_idx_2 = random_idx_1
 	counter = 0
-	while random_idx_2 == random_idx_1:
+	while random_idx_2 == random_idx_1 or (new_words[random_idx_2] in answer_words) or (new_words[random_idx_1] in answer_words):
+		random_idx_1 = random.randint(0, len(new_words)-1)
 		random_idx_2 = random.randint(0, len(new_words)-1)
 		counter += 1
-		if counter > 3:
+		if counter > 6:
 			return new_words
 	new_words[random_idx_1], new_words[random_idx_2] = new_words[random_idx_2], new_words[random_idx_1] 
 	return new_words
@@ -148,16 +157,17 @@ def swap_word(new_words):
 # Randomly insert n words into the sentence
 ########################################################################
 
-def random_insertion(words, n):
+def random_insertion(words, n, answer_words):
 	new_words = words.copy()
 	for _ in range(n):
-		add_word(new_words)
+		add_word(new_words, answer_words)
 	return new_words
 
-def add_word(new_words):
+def add_word(new_words, answer_words):
 	synonyms = []
 	counter = 0
-	while len(synonyms) < 1:
+	random_word = 0
+	while len(synonyms) < 1 or (not check_word(random_word, answer_words)):
 		random_word = new_words[random.randint(0, len(new_words)-1)]
 		synonyms = get_synonyms(random_word)
 		counter += 1
@@ -165,14 +175,22 @@ def add_word(new_words):
 			return
 	random_synonym = synonyms[0]
 	random_idx = random.randint(0, len(new_words)-1)
+	counter2 = 0
+	while (new_words[random_idx] in answer_words) and (random_idx > 0 and (new_words[random_idx-1] in answer_words)):
+		random_idx = random.randint(0, len(new_words)-1)
+		counter2 += 1
+		if counter >= 10:
+			return
+
 	new_words.insert(random_idx, random_synonym)
 
 ########################################################################
 # main data augmentation function
 ########################################################################
-def eda(sentence, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.1, num_aug=9):
-	
-	# sentence = get_only_chars(sentence) # cleaning already done in perform_eda.py
+
+def eda(sentence, answer_words=[], alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.1, num_aug=9):
+
+	# sentence = get_only_chars(sentence)
 	words = sentence.split(' ')
 	words = [word for word in words if word is not '']
 	num_words = len(words)
@@ -184,30 +202,30 @@ def eda(sentence, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.1, num_aug=9)
 	if (alpha_sr > 0):
 		n_sr = max(1, int(alpha_sr*num_words))
 		for _ in range(num_new_per_technique):
-			a_words = synonym_replacement(words, n_sr)
+			a_words = synonym_replacement(words, n_sr, answer_words)
 			augmented_sentences.append(' '.join(a_words))
 
 	#ri
 	if (alpha_ri > 0):
 		n_ri = max(1, int(alpha_ri*num_words))
 		for _ in range(num_new_per_technique):
-			a_words = random_insertion(words, n_ri)
+			a_words = random_insertion(words, n_ri, answer_words)
 			augmented_sentences.append(' '.join(a_words))
 
 	#rs
 	if (alpha_rs > 0):
 		n_rs = max(1, int(alpha_rs*num_words))
 		for _ in range(num_new_per_technique):
-			a_words = random_swap(words, n_rs)
+			a_words = random_swap(words, n_rs, answer_words)
 			augmented_sentences.append(' '.join(a_words))
 
 	#rd
 	if (p_rd > 0):
 		for _ in range(num_new_per_technique):
-			a_words = random_deletion(words, p_rd)
+			a_words = random_deletion(words, p_rd, answer_words)
 			augmented_sentences.append(' '.join(a_words))
 
-	augmented_sentences = [get_only_chars(sentence) for sentence in augmented_sentences]
+	# augmented_sentences = [get_only_chars(sentence) for sentence in augmented_sentences]
 	shuffle(augmented_sentences)
 
 	#trim so that we have the desired number of augmented sentences

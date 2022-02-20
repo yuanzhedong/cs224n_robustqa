@@ -415,6 +415,8 @@ class Trainer():
                             #self.save(model, curr_score['F1'])
                             self.log.info("Infer on testset...")
                             self.test_moe(model, test_dataloader, test_dict, self.save_dir)
+                        for k, v in best_scores.items():
+                            wandb.log({f'oodomain_val/best_{k}': v})
                     if rank == 0:
                         global_idx += world_size
         return best_scores

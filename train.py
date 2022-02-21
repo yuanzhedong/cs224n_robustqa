@@ -136,11 +136,11 @@ def prepare_train_data(dataset_dict, tokenizer):
 def read_and_process(args, tokenizer, dataset_dict, cache_path, split):
     if split == 'train':
         tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
+        print("saving encodings at", cache_path, "...")
+        Path(os.path.dirname(cache_path)).mkdir(parents=True, exist_ok=True)
+        util.save_pickle(tokenized_examples, cache_path)
     else:
         tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
-    print("saving encodings at", cache_path, "...")
-    Path(os.path.dirname(cache_path)).mkdir(parents=True, exist_ok=True)
-    util.save_pickle(tokenized_examples, cache_path)
     return tokenized_examples
 
 

@@ -139,6 +139,7 @@ def read_and_process(args, tokenizer, dataset_dict, cache_path, split):
     else:
         tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
     print("saving encodings at", cache_path, "...")
+    Path(os.path.dirname(cache_path)).mkdir(parents=True, exist_ok=True)
     util.save_pickle(tokenized_examples, cache_path)
     return tokenized_examples
 
@@ -428,9 +429,10 @@ def get_dataset(args, tokenizer, split_name):
         datasets_name += f'_{dataset_name}'
     if args.eda:
         datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
-    cache_path = f'{data_dir}/{dataset_names}_encodings.pt'
+    data_dir = f"cache/{split}/"
+    cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
-    if os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
+    if split_name = "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
         print("loading existing", cache_path, "...")
         data_encodings = util.load_pickle(cache_path)
 
@@ -589,3 +591,4 @@ if __name__ == '__main__':
             args=(world_size, args,),
             nprocs=world_size,
             join=True)
+

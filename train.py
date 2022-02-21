@@ -586,8 +586,11 @@ if __name__ == '__main__':
     world_size = torch.cuda.device_count()
     args = get_train_test_args()
     os.makedirs(args.save_dir, exist_ok=True)
-    args.save_dir = util.get_save_dir(args.save_dir, args.run_name)    
-    mp.spawn(main,
-        args=(world_size, args,),
-        nprocs=world_size,
-        join=True)
+    args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 
+    if world_size == 1:
+        main(0, 1, args)
+    else:
+        mp.spawn(main,
+            args=(world_size, args,),
+            nprocs=world_size,
+            join=True)

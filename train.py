@@ -6,6 +6,7 @@ from tkinter import N
 import torch
 import csv
 import util
+from pathlib import Path
 from transformers import DistilBertTokenizerFast
 from transformers import DistilBertForQuestionAnswering
 from transformers import AdamW
@@ -15,7 +16,7 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from models import MoE
-from args import get_train_test_args
+from args import get_train_test_args, DATASET_CONFIG
 import torch.nn as nn
 
 from tqdm import tqdm
@@ -132,9 +133,11 @@ def prepare_train_data(dataset_dict, tokenizer):
     return tokenized_examples
 
 
-def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, split):
+def read_and_process(args, tokenizer, dataset_dict, dataset_names, split):
     # TODO: cache this if possible
-    cache_path = f'{dir_name}/{dataset_name}_encodings.pt'
+    data_dir = f"cache/{split}/"
+    Path(data_dir).mkdir(parents=True, exist_ok=True)
+    cache_path = f'{data_dir}/{dataset_names}_encodings.pt'
     if os.path.exists(cache_path) and not args.recompute_features:
         tokenized_examples = util.load_pickle(cache_path)
     else:
@@ -422,30 +425,23 @@ class Trainer():
         return best_scores
 
 
-def get_eda_dataset(args, datasets, data_dir, tokenizer, split_name):
-    datasets = datasets.split(',')
+def get_dataset(args, tokenizer, split_name):
+    dataset_paths = DATASET_CONFIG[split_name]
     dataset_dict = None
-    dataset_name = ''
-    for dataset in datasets:
-        dataset_name += f'_{dataset}'
-        #dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
-        dataset_dict_curr = perform_eda.perform_eda(args, f'{data_dir}/{dataset}', dataset)
+    datasets_name = ''
+    for dataset_path in dataset_paths:
+        dataset_name = os.path.basename(dataset_path)
+        datasets_name += f'_{dataset_name}'
+        if args.eda and split_name == "train":
+            dataset_dict_curr = perform_eda.perform_eda(
+                args, dataset_path, dataset_name
+            )
+        else:
+            dataset_dict_curr = util.read_squad(dataset_path)
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
     data_encodings = read_and_process(
-        args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
-    return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
-
-
-def get_dataset(args, datasets, data_dir, tokenizer, split_name):
-    datasets = datasets.split(',')
-    dataset_dict = None
-    dataset_name = ''
-    for dataset in datasets:
-        dataset_name += f'_{dataset}'
-        dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
-        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
-    data_encodings = read_and_process(
-        args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+        args, tokenizer, dataset_dict, datasets_name, split_name
+    )
     return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
 
 
@@ -501,13 +497,7 @@ def main(rank, world_size, args):
         log.info("Preparing Training Data...")
         args.device = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-        if args.eda == False:
-            train_dataset, _ = get_dataset(
-            args, args.train_datasets, args.train_dir, tokenizer, 'train')
-        else:
-            train_dataset, _ = get_eda_dataset(
-                args, args.train_datasets, args.train_dir, tokenizer, 'train')
+        train_dataset, _ = get_dataset(args, tokenizer, 'train')
         log.info("Done loading training dataset")
         sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
 
@@ -525,13 +515,12 @@ def main(rank, world_size, args):
         test_loader = None
         test_dict = None
         if (rank == 0):
-            log.info("Preparing Validation Data...")
-            val_dataset, val_dict = get_dataset(
-                args, args.train_datasets, args.val_dir, tokenizer, 'val')
-            log.info("Preparing Test Data...")
+            log.info("Preparing in-domain Validation Data...")
+            val_dataset, val_dict = get_dataset(args, tokenizer, 'id_val')
+            log.info("Preparing out-of-domain Validation Data...")
             ood_val_dataset, ood_val_dict = get_dataset(
-                args, args.eval_datasets, "datasets/oodomain_val", tokenizer, "val")
-
+                args, tokenizer, "ood_val"
+            )
             val_loader = DataLoader(val_dataset,
                                     batch_size=args.batch_size,
                                     sampler=SequentialSampler(val_dataset))
@@ -540,7 +529,7 @@ def main(rank, world_size, args):
                                         batch_size=args.batch_size,
                                         sampler=SequentialSampler(ood_val_dataset))
 
-            test_dataset, test_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, "test")
+            test_dataset, test_dict = get_dataset(args, tokenizer, "test")
             test_loader = DataLoader(test_dataset, batch_size=args.batch_size,sampler=SequentialSampler(test_dataset))
 
         if args.model_type == "distilbert":             
@@ -553,15 +542,14 @@ def main(rank, world_size, args):
     if args.do_eval:
         args.device = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
-        split_name = 'test' if 'test' in args.eval_dir else 'validation'
+        split_name = 'test'
         log = util.get_logger(args.save_dir, f'log_{split_name}')
         trainer = Trainer(args, log)
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
         # TODO: add loading model for MoE
         model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
         model.to(args.device)
-        eval_dataset, eval_dict = get_dataset(
-            args, args.eval_datasets, args.eval_dir, tokenizer, split_name)
+        eval_dataset, eval_dict = get_dataset(args, tokenizer, split_name)
         eval_loader = DataLoader(eval_dataset,
                                  batch_size=args.batch_size,
                                  sampler=SequentialSampler(eval_dataset))

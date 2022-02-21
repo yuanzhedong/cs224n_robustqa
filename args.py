@@ -2,7 +2,7 @@ import argparse
 
 def get_train_test_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--batch-size', type=int, default=8)
     parser.add_argument('--num-epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=3e-5)
     parser.add_argument('--num-visuals', type=int, default=10)
@@ -36,11 +36,11 @@ def get_train_test_args():
 DATASET_CONFIG = {
     "train": [
         "datasets/indomain_train/nat_questions",
-        "datasets/indomain_train/newsqa",
-        "datasets/indomain_train/squad",
-        "datasets/oodomain_train/duorc",
-        "datasets/oodomain_train/race",
-        "datasets/oodomain_train/relation_extraction",
+        # "datasets/indomain_train/newsqa",
+        # "datasets/indomain_train/squad",
+        # "datasets/oodomain_train/duorc",
+        # "datasets/oodomain_train/race",
+        # "datasets/oodomain_train/relation_extraction",
     ],
     "id_val": [
         "datasets/indomain_val/nat_questions",

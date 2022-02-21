@@ -29,7 +29,7 @@ os.environ['MASTER_PORT'] = '12355'
 # for data augmentation
 import perform_eda
 import wandb
-
+from switch_transformer import SwitchTransformer, SwitchTransformerLayer, MultiHeadAttention, SwitchFeedForward, FeedForward
 
 
 
@@ -193,6 +193,8 @@ class Trainer():
                 # Setup for forward
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
+                import pdb
+                pdb.set_trace()
                 batch_size = len(input_ids)
                 outputs = model(input_ids, attention_mask=attention_mask)
                 # Forward
@@ -373,6 +375,8 @@ class Trainer():
                     model.train()
                     input_ids = batch['input_ids'].to(rank)
                     start_logits, end_logits, loss = model(batch)
+                    if loss is None:
+                        continue
                     loss.backward()
                     optim.step()
                     
@@ -459,6 +463,14 @@ def main(rank, world_size, args):
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
+    if args.model_type == "switch_transformer":
+        print("using switch transformer")
+        device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        ff = FeedForward(args.dim, args.hidden_dim)
+        attn=MultiHeadAttention(8, args.dim, 0.2)
+        st_ff = SwitchFeedForward(capacity_factor=1.25,drop_tokens=False, n_experts=args.num_experts, expert=ff, d_model=args.dim, is_scale_prob=True)
+        st_layer = SwitchTransformerLayer(d_model=args.dim, attn=attn, feed_forward=st_ff,dropout_prob=0.2)
+        model = SwitchTransformer(layer=st_layer, n_layers=8, device=device).to(rank)        
     else:
         print("Using MoE")
         device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -575,10 +587,10 @@ if __name__ == '__main__':
     args = get_train_test_args()
     os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 
-    if world_size == 1:
-        main(0, 1, args)
-    else:
-        mp.spawn(main,
-            args=(world_size, args,),
-            nprocs=world_size,
-            join=True)
+    #if world_size == 1:
+    main(0, 1, args)
+    # else:
+    #     mp.spawn(main,
+    #         args=(world_size, args,),
+    #         nprocs=world_size,
+    #         join=True)

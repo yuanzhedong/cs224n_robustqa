@@ -143,9 +143,9 @@ def read_and_process(args, tokenizer, dataset_dict, dataset_names, split):
     else:
         if split == 'train':
             tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
+            util.save_pickle(tokenized_examples, cache_path)
         else:
             tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
-        util.save_pickle(tokenized_examples, cache_path)
     return tokenized_examples
 
 

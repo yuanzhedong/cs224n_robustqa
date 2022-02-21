@@ -299,10 +299,7 @@ class SwitchTransformer(nn.Module):
         start_logits = start_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
         end_logits = end_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
 
-
-        # TODO: replace with auc loss
         loss = None
-
         if start_positions is not None and end_positions is not None:
             if len(start_positions.size()) > 1:
                 start_positions = start_positions.squeeze(-1)
@@ -317,11 +314,16 @@ class SwitchTransformer(nn.Module):
             loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
             start_loss = loss_fct(start_logits, start_positions)
             end_loss = loss_fct(end_logits, end_positions)
-            # TODO: add auc loss
             loss = (start_loss + end_loss) / 2
-        
+        counts = torch.stack(counts)
+        route_prob = torch.stack(route_prob)
+        route_prob_max = torch.stack(route_prob_max)
+        total = counts.sum(dim=-1, keepdims=True)
+        route_frac = counts / total
+        route_prob = route_prob / total
+        load_balancing_loss = self.n_experts * (route_frac * route_prob).sum()
+        loss = load_balancing_loss if loss is None else loss + load_balancing_loss
         return start_logits, end_logits, loss
-        #return x, torch.stack(counts), torch.stack(route_prob), n_dropped, torch.stack(route_prob_max)
 
 
 

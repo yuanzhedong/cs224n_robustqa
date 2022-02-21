@@ -161,8 +161,8 @@ class Trainer():
         self.save_dir = args.save_dir
         self.log = log
         self.visualize_predictions = args.visualize_predictions
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
+        
+        os.makedirs(self.path, exist_ok=True)
         self.model_type = args.model_type
 
     def save(self, model, best_scores):

@@ -6,6 +6,7 @@ from tkinter import N
 import torch
 import csv
 import util
+from pathlib import Path
 from transformers import DistilBertTokenizerFast
 from transformers import DistilBertForQuestionAnswering
 from transformers import AdamW
@@ -134,7 +135,9 @@ def prepare_train_data(dataset_dict, tokenizer):
 
 def read_and_process(args, tokenizer, dataset_dict, dataset_names, split):
     # TODO: cache this if possible
-    cache_path = f'{split}/{dataset_names}_encodings.pt'
+    data_dir = f"cache/{split}/"
+    Path(data_dir).mkdir(parents=True, exist_ok=True)
+    cache_path = f'{data_dir}/{dataset_names}_encodings.pt'
     if os.path.exists(cache_path) and not args.recompute_features:
         tokenized_examples = util.load_pickle(cache_path)
     else:

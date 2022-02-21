@@ -10,14 +10,9 @@ def get_train_test_args():
     parser.add_argument('--save-dir', type=str, default='save/')
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--train-datasets', type=str, default='squad,nat_questions,newsqa')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
     parser.add_argument('--model-type', type=str, default='distilbert')
     parser.add_argument('--recompute-features', action='store_true')
-    parser.add_argument('--train-dir', type=str, default='datasets/indomain_train')
-    parser.add_argument('--val-dir', type=str, default='datasets/indomain_val')
-    parser.add_argument('--eval-dir', type=str, default='datasets/oodomain_test')
-    parser.add_argument('--eval-datasets', type=str, default='race,relation_extraction,duorc')
     parser.add_argument('--do-train', action='store_true')
     parser.add_argument('--do-eval', action='store_true')
     parser.add_argument('--sub-file', type=str, default='')
@@ -32,6 +27,34 @@ def get_train_test_args():
     parser.add_argument("--alpha_ri", default=0, required=False, type=float, help="percent of words in each sentence to be inserted")
     parser.add_argument("--alpha_rs", default=0, required=False, type=float, help="percent of words in each sentence to be swapped")
     parser.add_argument("--alpha_rd", default=0, required=False, type=float, help="percent of words in each sentence to be deleted")
+    parser.add_argument("--train_with_ood", default="simple_mix", type=str, help="Method to mix in-domain and OOD data. Options: [no_ood, simple_mix]. For wandb recording purpose")
 
     args = parser.parse_args()
     return args
+
+
+DATASET_CONFIG = {
+    "train": [
+        "datasets/indomain_train/nat_questions",
+        "datasets/indomain_train/newsqa",
+        "datasets/indomain_train/squad",
+        "datasets/oodomain_train/duorc",
+        "datasets/oodomain_train/race",
+        "datasets/oodomain_train/relation_extraction",
+    ],
+    "id_val": [
+        "datasets/indomain_val/nat_questions",
+        "datasets/indomain_val/newsqa",
+        "datasets/indomain_val/squad",
+    ],
+    "ood_val": [
+        "datasets/oodomain_val/duorc",
+        "datasets/oodomain_val/race",
+        "datasets/oodomain_val/relation_extraction",
+    ],
+    "test": [
+        "datasets/oodomain_test/duorc",
+        "datasets/oodomain_test/race",
+        "datasets/oodomain_test/relation_extraction",
+    ]
+}

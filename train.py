@@ -432,7 +432,7 @@ def get_dataset(args, tokenizer, split_name):
     data_dir = f"cache/{split}/"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
-    if split_name = "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
+    if split_name == "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
         print("loading existing", cache_path, "...")
         data_encodings = util.load_pickle(cache_path)
 

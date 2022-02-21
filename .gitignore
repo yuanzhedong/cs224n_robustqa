@@ -3,3 +3,4 @@ save/*
 __pycache__/*
 wandb/*
 nltk_data/*
+cache/*

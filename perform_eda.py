@@ -102,29 +102,19 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
     # num_aug = 4
 
     #number of augmented sentences to generate per original sentence
-    num_aug = 4 # 9 #default
-    if args.num_aug:
-        num_aug = args.num_aug
+    num_aug = args.num_aug
 
     #how much to replace each word by synonyms
-    alpha_sr = 0.3 # 0.1#default
-    if args.alpha_sr is not None:
-        alpha_sr = args.alpha_sr
+    alpha_sr = args.alpha_sr
 
     #how much to insert new words that are synonyms
-    alpha_ri = 0.0 # 0.1#default
-    if args.alpha_ri is not None:
-        alpha_ri = args.alpha_ri
+    alpha_ri = args.alpha_ri
 
     #how much to swap words
-    alpha_rs = 0.0 # 0.1#default
-    if args.alpha_rs is not None:
-        alpha_rs = args.alpha_rs
+    alpha_rs = args.alpha_rs
 
     #how much to delete words
-    alpha_rd = 0.0 # 0.1#default
-    if args.alpha_rd is not None:
-        alpha_rd = args.alpha_rd
+    alpha_rd = args.alpha_rd
 
     question_list = data_dict_collapsed['question']
     context_list = data_dict_collapsed['context']

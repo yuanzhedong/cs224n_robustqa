@@ -261,7 +261,7 @@ class SwitchTransformer(nn.Module):
     ## Switch Transformer
     """
 
-    def __init__(self, layer, n_layers, device):
+    def __init__(self, layer, n_layers, n_experts, device):
         super().__init__()
         # Make copies of the transformer layer
         self.layers = nn.ModuleList([copy.deepcopy(layer) for _ in range(n_layers)])
@@ -270,6 +270,9 @@ class SwitchTransformer(nn.Module):
         self.qa_outputs = nn.Linear(768, 2)
         self.base_model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
         self.device = device
+        self.load_balancing_loss_ceof = 0.01
+        self.n_experts = n_experts # used to calculate lb loss
+
 
 
     #def forward(self, x: torch.Tensor, mask: torch.Tensor):
@@ -322,7 +325,7 @@ class SwitchTransformer(nn.Module):
         route_frac = counts / total
         route_prob = route_prob / total
         load_balancing_loss = self.n_experts * (route_frac * route_prob).sum()
-        loss = load_balancing_loss if loss is None else loss + load_balancing_loss
+        loss = load_balancing_loss if loss is None else loss + self.load_balancing_loss_ceof * load_balancing_loss
         return start_logits, end_logits, loss
 
 

@@ -470,7 +470,7 @@ def main(rank, world_size, args):
         attn=MultiHeadAttention(8, args.dim, 0.2)
         st_ff = SwitchFeedForward(capacity_factor=1.25,drop_tokens=False, n_experts=args.num_experts, expert=ff, d_model=args.dim, is_scale_prob=True)
         st_layer = SwitchTransformerLayer(d_model=args.dim, attn=attn, feed_forward=st_ff,dropout_prob=0.2)
-        model = SwitchTransformer(layer=st_layer, n_layers=8, device=device).to(rank)        
+        model = SwitchTransformer(layer=st_layer, n_layers=8, n_experts=args.num_experts, device=device).to(rank)        
     else:
         print("Using MoE")
         device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")

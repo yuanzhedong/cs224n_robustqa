@@ -429,7 +429,7 @@ def get_dataset(args, tokenizer, split_name):
         datasets_name += f'_{dataset_name}'
     if args.eda:
         datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
-    data_dir = f"cache/{split}/"
+    data_dir = f"cache/{split_name}/"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
     if split_name == "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt

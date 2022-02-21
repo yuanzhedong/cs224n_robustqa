@@ -542,7 +542,7 @@ def main(rank, world_size, args):
     if args.do_eval:
         args.device = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
-        split_name = 'test' if 'test' in args.eval_dir else 'validation'
+        split_name = 'test'
         log = util.get_logger(args.save_dir, f'log_{split_name}')
         trainer = Trainer(args, log)
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')

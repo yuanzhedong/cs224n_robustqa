@@ -133,19 +133,14 @@ def prepare_train_data(dataset_dict, tokenizer):
     return tokenized_examples
 
 
-def read_and_process(args, tokenizer, dataset_dict, dataset_names, split):
-    # TODO: cache this if possible
-    data_dir = f"cache/{split}/"
-    Path(data_dir).mkdir(parents=True, exist_ok=True)
-    cache_path = f'{data_dir}/{dataset_names}_encodings.pt'
-    if os.path.exists(cache_path) and not args.recompute_features:
-        tokenized_examples = util.load_pickle(cache_path)
+def read_and_process(args, tokenizer, dataset_dict, cache_path, split):
+    if split == 'train':
+        tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
+        print("saving encodings at", cache_path, "...")
+        Path(os.path.dirname(cache_path)).mkdir(parents=True, exist_ok=True)
+        util.save_pickle(tokenized_examples, cache_path)
     else:
-        if split == 'train':
-            tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
-            util.save_pickle(tokenized_examples, cache_path)
-        else:
-            tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
+        tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
     return tokenized_examples
 
 
@@ -432,16 +427,30 @@ def get_dataset(args, tokenizer, split_name):
     for dataset_path in dataset_paths:
         dataset_name = os.path.basename(dataset_path)
         datasets_name += f'_{dataset_name}'
-        if args.eda and split_name == "train":
-            dataset_dict_curr = perform_eda.perform_eda(
-                args, dataset_path, dataset_name
-            )
-        else:
-            dataset_dict_curr = util.read_squad(dataset_path)
-        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
-    data_encodings = read_and_process(
-        args, tokenizer, dataset_dict, datasets_name, split_name
-    )
+    if args.eda:
+        datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
+    data_dir = f"cache/{split_name}"
+    cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
+
+    if split_name == "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
+        print("loading existing", cache_path, "...")
+        data_encodings = util.load_pickle(cache_path)
+
+    else:
+        print("not using cache, creating new encoding...")
+        for dataset_path in dataset_paths:
+            dataset_name = os.path.basename(dataset_path)
+            if args.eda and split_name == "train":
+                dataset_dict_curr = perform_eda.perform_eda(
+                    args, dataset_path, dataset_name
+                )
+            else:
+                dataset_dict_curr = util.read_squad(dataset_path)
+            dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+        data_encodings = read_and_process(
+            args, tokenizer, dataset_dict, cache_path, split_name
+        )
+
     return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
 
 
@@ -582,3 +591,4 @@ if __name__ == '__main__':
             args=(world_size, args,),
             nprocs=world_size,
             join=True)
+

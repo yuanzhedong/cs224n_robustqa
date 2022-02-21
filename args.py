@@ -12,7 +12,7 @@ def get_train_test_args():
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
     parser.add_argument('--model-type', type=str, default='distilbert')
-    parser.add_argument('--recompute-features', action='store_true')
+    parser.add_argument('--recompute-features', default=True, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
     parser.add_argument('--do-train', action='store_true')
     parser.add_argument('--do-eval', action='store_true')
     parser.add_argument('--sub-file', type=str, default='')

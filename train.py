@@ -353,8 +353,8 @@ class Trainer():
     def train_moe(
         self,
         model,
-        pretrain_data_loader,
-        train_data_loader,
+        pretrain_dataloader,
+        train_dataloader,
         dev_dataloader,
         dev_dict,
         ood_dev_dataloader,
@@ -372,13 +372,13 @@ class Trainer():
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
 
-        if pretraining_dataloader is not None
+        if pretrain_dataloader is not None:
             for epoch_num in range(self.num_epochs_pretrain):
                 if rank == 0:
                     self.log.info(f'Pretraing Epoch: {epoch_num}')
                     wandb.log({'Pretraing Epoch': epoch_num})
-            with torch.enable_grad(), tqdm(total=len(pretraining_dataloader.dataset)) as progress_bar:
-                for batch in pretraining_dataloader:
+            with torch.enable_grad(), tqdm(total=len(pretrain_dataloader.dataset)) as progress_bar:
+                for batch in pretrain_dataloader:
                     optim.zero_grad()
                     model.train()
                     input_ids = batch['input_ids'].to(rank)
@@ -589,7 +589,7 @@ def main(rank, world_size, args):
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
-        elif args.model_type == "MoE":
+        elif args.model_type == "moe":
             best_scores = trainer.train_moe(
                 model, pretrain_dataset, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
             )

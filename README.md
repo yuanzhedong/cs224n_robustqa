@@ -29,7 +29,7 @@ python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_
 ```
 
 With pretraining: 
-- The indomain_train will be used for pretraining
+- The indomain_train and oodomain_train combined will be used for pretraining
 - The oodomain_train datasets will be used for finetuning
 
 ```

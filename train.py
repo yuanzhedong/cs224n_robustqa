@@ -149,6 +149,7 @@ class Trainer():
     def __init__(self, args, log):
         self.lr = args.lr
         self.num_epochs = args.num_epochs
+        self.num_epochs_pretrain = args.num_epochs_pretrain
         self.device = args.device
         self.eval_every = args.eval_every
         self.path = os.path.join(args.save_dir, 'checkpoint')
@@ -349,7 +350,20 @@ class Trainer():
                         global_idx += world_size
         return best_scores
 
-    def train_moe(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict, test_dataloader, test_dict, rank, world_size):
+    def train_moe(
+        self,
+        model,
+        pretrain_data_loader,
+        train_data_loader,
+        dev_dataloader,
+        dev_dict,
+        ood_dev_dataloader,
+        ood_dev_dict,
+        test_dataloader,
+        test_dict,
+        rank,
+        world_size,
+    ):
         optim = AdamW(model.parameters(), lr=self.lr)
         global_idx = 0
         global_idx_count = 1
@@ -358,6 +372,27 @@ class Trainer():
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
 
+        if pretraining_dataloader is not None
+            for epoch_num in range(self.num_epochs_pretrain):
+                if rank == 0:
+                    self.log.info(f'Pretraing Epoch: {epoch_num}')
+                    wandb.log({'Pretraing Epoch': epoch_num})
+            with torch.enable_grad(), tqdm(total=len(pretraining_dataloader.dataset)) as progress_bar:
+                for batch in pretraining_dataloader:
+                    optim.zero_grad()
+                    model.train()
+                    input_ids = batch['input_ids'].to(rank)
+                    start_logits, end_logits, loss = model(batch)
+                    loss.backward()
+                    optim.step()
+                    if rank == 0:
+                        progress_bar.update(len(input_ids)*world_size)
+                        progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
+                        tbx.add_scalar('pretrain/NLL', loss.item(), global_idx)
+                        wandb.log({
+                            "index": global_idx,
+                            "pretrain/NLL": loss.item(),
+                        })
         for epoch_num in range(self.num_epochs):
             if rank == 0:
                 self.log.info(f'Epoch: {epoch_num}')
@@ -420,15 +455,17 @@ class Trainer():
         return best_scores
 
 
-def get_dataset(args, tokenizer, split_name):
+def get_dataset(args, tokenizer, split_name, num_aug=0):
+    if split_name not in DATASET_CONFIG:
+        return
     dataset_paths = DATASET_CONFIG[split_name]
     dataset_dict = None
     datasets_name = ''
     for dataset_path in dataset_paths:
         dataset_name = os.path.basename(dataset_path)
         datasets_name += f'_{dataset_name}'
-    if args.eda:
-        datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
+    if args.eda and num_aug > 0:
+        datasets_name += '_eda' + f'_{num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
     data_dir = f"cache/{split_name}"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
@@ -506,7 +543,15 @@ def main(rank, world_size, args):
         log.info("Preparing Training Data...")
         args.device = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
-        train_dataset, _ = get_dataset(args, tokenizer, 'train')
+        if args.pretrain:
+            # the train split will be used for pretraining and the 
+            # finetune split will be used for finetuning
+            pretrain_dataset, _ = get_dataset(args, tokenizer, 'train', args.num_aug_pretrain)
+            train_dataset, _ = get_dataset(args, tokenizer, 'finetune', args.num_aug)
+        else:
+            # No finetuning dataset, only one train dataset
+            pretrain_dataset = None
+            train_dataset, _ = get_dataset(args, tokenizer, 'train', args.num_aug)
         log.info("Done loading training dataset")
         sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
 
@@ -544,9 +589,12 @@ def main(rank, world_size, args):
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
-        else:
+        elif args.model_type == "MoE":
             best_scores = trainer.train_moe(
-                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size)
+                model, pretrain_dataset, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
+            )
+        else:
+            raise ValueError("model_type must be either distilbert or MoE")
 
     if args.do_eval:
         args.device = torch.device(

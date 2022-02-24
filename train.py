@@ -469,7 +469,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
     data_dir = f"cache/{split_name}"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
-    if split_name == "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
+    if split_name in ["train", "finetune"] and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
         print("loading existing", cache_path, "...")
         data_encodings = util.load_pickle(cache_path)
 
@@ -477,7 +477,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         print("not using cache, creating new encoding...")
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
-            if args.eda and split_name == "train":
+            if args.eda and split_name in ["train", "finetune"]:
                 dataset_dict_curr = perform_eda.perform_eda(
                     args, dataset_path, dataset_name
                 )
@@ -488,7 +488,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
             args, tokenizer, dataset_dict, cache_path, split_name
         )
 
-    return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
+    return util.QADataset(data_encodings, train=(split_name in ["train", "finetune"])), dataset_dict
 
 
 def main(rank, world_size, args):
@@ -550,11 +550,18 @@ def main(rank, world_size, args):
             train_dataset, _ = get_dataset(args, tokenizer, 'finetune', args.num_aug)
         else:
             # No finetuning dataset, only one train dataset
-            pretrain_dataset = None
             train_dataset, _ = get_dataset(args, tokenizer, 'train', args.num_aug)
         log.info("Done loading training dataset")
         sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
 
+        if args.pretrain:
+            pretrain_loader = DataLoader(
+                pretrain_dataset,
+                batch_size=args.batch_size,
+                sampler= sampler
+            )
+        else:
+            pretrain_loader = None
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler= sampler)
@@ -591,7 +598,7 @@ def main(rank, world_size, args):
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
         elif args.model_type == "moe":
             best_scores = trainer.train_moe(
-                model, pretrain_dataset, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
+                model, pretrain_loader, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
             )
         else:
             raise ValueError("model_type must be either distilbert or MoE")

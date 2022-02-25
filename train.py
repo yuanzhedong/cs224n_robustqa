@@ -134,7 +134,7 @@ def prepare_train_data(dataset_dict, tokenizer):
 
 
 def read_and_process(args, tokenizer, dataset_dict, cache_path, split):
-    if split == 'train':
+    if split in ['train', 'finetune']:
         tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
         print("saving encodings at", cache_path, "...")
         Path(os.path.dirname(cache_path)).mkdir(parents=True, exist_ok=True)
@@ -371,28 +371,30 @@ class Trainer():
         tbx = None
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
-
         if pretrain_dataloader is not None:
+            pretrain_step_idx = 0
             for epoch_num in range(self.num_epochs_pretrain):
                 if rank == 0:
                     self.log.info(f'Pretraing Epoch: {epoch_num}')
                     wandb.log({'Pretraing Epoch': epoch_num})
-            with torch.enable_grad(), tqdm(total=len(pretrain_dataloader.dataset)) as progress_bar:
-                for batch in pretrain_dataloader:
-                    optim.zero_grad()
-                    model.train()
-                    input_ids = batch['input_ids'].to(rank)
-                    start_logits, end_logits, loss = model(batch)
-                    loss.backward()
-                    optim.step()
-                    if rank == 0:
-                        progress_bar.update(len(input_ids)*world_size)
-                        progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
-                        tbx.add_scalar('pretrain/NLL', loss.item(), global_idx)
-                        wandb.log({
-                            "index": global_idx,
-                            "pretrain/NLL": loss.item(),
-                        })
+                with torch.enable_grad(), tqdm(total=len(pretrain_dataloader.dataset)) as progress_bar:
+                    for batch in pretrain_dataloader:
+                        optim.zero_grad()
+                        model.train()
+                        input_ids = batch['input_ids'].to(rank)
+                        start_logits, end_logits, loss = model(batch)
+                        loss.backward()
+                        optim.step()
+                        if rank == 0:
+                            progress_bar.update(len(input_ids)*world_size)
+                            progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
+                            tbx.add_scalar('pretrain/NLL', loss.item(), pretrain_step_idx)
+                            wandb.log({
+                                "index": pretrain_step_idx,
+                                "pretrain/NLL": loss.item(),
+                            })
+                        if rank == 0:
+                            pretrain_step_idx += world_size
         for epoch_num in range(self.num_epochs):
             if rank == 0:
                 self.log.info(f'Epoch: {epoch_num}')
@@ -555,10 +557,11 @@ def main(rank, world_size, args):
         sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
 
         if args.pretrain:
+            pretrain_sample = torch.utils.data.distributed.DistributedSampler(pretrain_dataset)
             pretrain_loader = DataLoader(
                 pretrain_dataset,
                 batch_size=args.batch_size,
-                sampler= sampler
+                sampler=pretrain_sample
             )
         else:
             pretrain_loader = None

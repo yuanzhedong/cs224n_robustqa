@@ -179,7 +179,8 @@ class QADataset(Dataset):
         self.keys = ['input_ids', 'attention_mask']
         if train:
             self.keys += ['start_positions', 'end_positions']
-        assert(all(key in self.encodings for key in self.keys))
+        for key in self.keys:
+            assert key in self.encodings, f'{key} not in encodings!'
 
     def __getitem__(self, idx):
         return {key : torch.tensor(self.encodings[key][idx]) for key in self.keys}

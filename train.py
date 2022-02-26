@@ -397,7 +397,7 @@ class Trainer():
                             })
                         if rank == 0:
                             pretrain_step_idx += world_size
-            if args.freeze_experts:
+            if args.freeze_expert:
                 model.freeze_experts()
         for epoch_num in range(self.num_epochs):
             if rank == 0:

@@ -21,6 +21,7 @@ def get_train_test_args():
     parser.add_argument('--dim', type=int, default=768)
     parser.add_argument('--num_experts', type=int, default=16)
     parser.add_argument('--hidden_dim', type=int, default=768 * 4)
+    parser.add_argument('--back_translate', default=False, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
     parser.add_argument('--eda', default=False, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
     parser.add_argument("--num_aug", default=4, required=False, type=int, help="number of augmented sentences per original sentence")
     parser.add_argument("--alpha_sr", default=0.3, required=False, type=float, help="percent of words in each sentence to be replaced by synonyms")
@@ -35,11 +36,11 @@ def get_train_test_args():
 
 DATASET_CONFIG = {
     "train": [
-        "datasets/indomain_train/nat_questions",
-        "datasets/indomain_train/newsqa",
-        "datasets/indomain_train/squad",
-        "datasets/oodomain_train/duorc",
-        "datasets/oodomain_train/race",
+        # "datasets/indomain_train/nat_questions",
+        # "datasets/indomain_train/newsqa",
+        # "datasets/indomain_train/squad",
+        # "datasets/oodomain_train/duorc",
+        # "datasets/oodomain_train/race",
         "datasets/oodomain_train/relation_extraction",
     ],
     "id_val": [

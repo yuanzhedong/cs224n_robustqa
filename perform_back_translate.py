@@ -14,6 +14,12 @@ from torch.utils.data import Dataset
 import eda
 import re
 
+from BackTranslation import BackTranslation
+trans = BackTranslation(url=[
+      'translate.google.com',
+      'translate.google.co.kr',
+    ], proxies={'http': '127.0.0.1:1234', 'http://host.name': '127.0.0.1:4012'})
+
 # Adapted from https://github.com/AntheaLi/cs224nProject/tree/fb08ba61f9d4d86c8e6a2a48f6cfe989a0f3a65b
 # Different from the other project implementation:
 # 1. No train_fraction. Do data augmentation on 100% of data. Plus hyperparameters can be applied to augmentation to adjust for percentage.
@@ -62,13 +68,15 @@ def read_squad(path):
     return data_dict_collapsed
 
 def clean_line(sentence):
-    line = sentence.strip()
-    for s in string.punctuation:
-        line = line.replace(s, "")
 
+    line = sentence.strip()
     line = line.replace("\t", " ")
     line = line.replace("\n", " ")
-    line = line.lower()
+    line = line.replace("\\", "")
+    line = line.replace('"', "\"")
+    line = line.replace("'", "\'")
+
+    #line = line.lower()
 
     line = re.sub(' +',' ',line) #delete extra spaces
 
@@ -94,27 +102,6 @@ def shuffle_augment_data(new_data_dict_collapsed):
 
 
 def data_augmentation(args, dataset_name, data_dict_collapsed):
-    # parameters from the other project that uses eda for data augmentation
-    # alpha_sr = 0.3
-    # alpha_ri = 0.0
-    # alpha_rs = 0.0
-    # alpha_rd = 0.0
-    # num_aug = 4
-
-    #number of augmented sentences to generate per original sentence
-    num_aug = args.num_aug
-
-    #how much to replace each word by synonyms
-    alpha_sr = args.alpha_sr
-
-    #how much to insert new words that are synonyms
-    alpha_ri = args.alpha_ri
-
-    #how much to swap words
-    alpha_rs = args.alpha_rs
-
-    #how much to delete words
-    alpha_rd = args.alpha_rd
 
     question_list = data_dict_collapsed['question']
     context_list = data_dict_collapsed['context']
@@ -123,59 +110,81 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
 
     new_data_dict_collapsed = {'question': [], 'context': [], 'id': [], 'answer': []}
 
-    found_answer_counter = 0
-    lost_answer_counter = 0
-    for idx, answer_dict in enumerate(answer_list):
-        answer_words = set()
+    for idx, answer_dict in enumerate(answer_list): # answers for each context
+
+        context = context_list[idx]
         text = answer_dict['text']
+        answer_start = answer_dict['answer_start']
+        
+        answer_starts_sizes = [] # (starts, size)
+        context_broken = [] # we do not translate answers --> remove answers from context before translation
+        context_start_idx = 0
+        for i, each_answer in enumerate(text):
+            # {"question": "Who calls Gramps and Pud from the other side?", "id": "6d849cc2e70742a1b7d4ad20b90bba61", "answers": [{"answer_start": 2875, "text": "Granny Nellie"}, {"answer_start": 2875, "text": "Granny Nellie"}]}
+            context_broken.append(context[context_start_idx:answer_start[i]])
+            context_start_idx = answer_start[i] + len(each_answer) + 1
+            answer_starts_sizes.append((answer_start[i], len(each_answer)))
+        context_broken.append(context[context_start_idx:])
 
-        # Add all words in 3 answers into the a words list, which is a word list that eda should avoid operate on, just like stop words
-        for each_answer in text:
-            words = clean_line(each_answer).split(" ")
-            for word in words:
-                if word:
-                    answer_words.add(word)
-
-       # operate eda on every context
-        context = clean_line(context_list[idx])
+       # operate back translation on every context
         aug_contexts = []
-        trans_cn = trans.translate(context, src='en', tmp = 'zh-cn')
+        trans_cn = []
+        trans_es = []
+        for context_part in context_broken:
+            if context_part.strip() == "":
+                trans_cn.append("")
+                trans_es.append("")
+            else:
+                # print(context_part)
+                # using chinese as media is not stable, sometimes translation fail on long and weird texts
+                # -> error happens within site-packages/googletrans/client.py, hard to fix
+                # -> change to french
+                # google trans performs the best on spanish
+                trans_cn.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr').result_text))
+                trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es').result_text))
         aug_contexts.append(trans_cn)
-        #print("augmented versions:", len(aug_contexts))
-        for idx_context, aug_context in enumerate(aug_contexts):
-            aug_context = clean_line(aug_context)
-            new_answer_dict = {'answer_start': [], 'text': []}
-            for each_answer in text:
-                new_each_answer = clean_line(each_answer)
-                start = aug_context.find(new_each_answer) # The find() method finds the first occurrence of the specified value. The find() method returns -1 if the value is not found.
-                if start != -1:
-                    #print("found!!!")
-                    found_answer_counter += 1
-                    new_answer_dict['answer_start'].append(answer_dict['answer_start'])
-                    new_answer_dict['text'].append(new_each_answer)
-                else:
-                    lost_answer_counter += 1
-                    #print("not found original answer: ", lost_answer_counter, each_answer, "\n", aug_context, "\n")
+        aug_contexts.append(trans_es)
 
-            if len(new_answer_dict['text']) != 0:
-                new_data_dict_collapsed['question'].append(clean_line(question_list[idx]))
-                new_data_dict_collapsed['context'].append(aug_context)
-                new_data_dict_collapsed['answer'].append(new_answer_dict)
-                new_data_dict_collapsed['id'].append(str(idx_context)+"translate"+id_list[idx])
-    print("lost answer:", lost_answer_counter, "; found answer:", found_answer_counter)
+        print("")
+        print("text", text)
+        print("original:", context)
+        for idx_context, aug_context in enumerate(aug_contexts):
+
+            new_answer_dict = {'answer_start': [], 'text': []}
+            
+            aug_context_string = ""
+            for i, each_answer in enumerate(text):
+                new_each_answer = clean_line(each_answer)
+                aug_context_string += aug_context[i] + " "
+                new_answer_dict['answer_start'].append(len(aug_context_string))
+                aug_context_string += new_each_answer + " "
+                new_answer_dict['text'].append(new_each_answer) 
+            aug_context_string += aug_context[-1]
+
+            print("aug_context_string:", aug_context_string)
+
+            new_data_dict_collapsed['question'].append(clean_line(question_list[idx]))
+            new_data_dict_collapsed['context'].append(aug_context_string)
+            new_data_dict_collapsed['answer'].append(new_answer_dict)
+            new_data_dict_collapsed['id'].append(str(idx_context)+"translate"+id_list[idx])
+
     # Save augmented data to JSON file
-    save_json_file = open("datasets/eda_"+dataset_name+".json", "w+")
+    save_json_file = open("datasets/back_translate_"+dataset_name+".json", "w+")
     save_json_file.write(json.dumps(new_data_dict_collapsed))
     save_json_file.close()
 
     return shuffle_augment_data(new_data_dict_collapsed)
 
 
-def perform_eda(args, path, dataset_name):
+def perform_back_translate(args, path, dataset_name):
     data_dict_collapsed = read_squad(path)
     new_data_dict_collapsed = data_augmentation(args, dataset_name, data_dict_collapsed)
+
+    # merge with original unaugmented
+    new_data_dict_collapsed = util.merge(data_dict_collapsed, new_data_dict_collapsed)
+
     print("="*20)
-    print("Data augmentation(eda) is finished for file ", path)
+    print("Data augmentation(back translation) is finished for file ", path)
     print("Number of original samples: ", len(data_dict_collapsed['question']))
     print("Total number of samples after augmentation: ", len(new_data_dict_collapsed['question']))
     print("="*20 + "\t")

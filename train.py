@@ -500,8 +500,8 @@ def main(rank, world_size, args):
     # define parser and arguments
     if world_size > 1:
         dist.init_process_group("nccl", rank=rank, world_size=world_size)
-    print(rank, world_size)
-    
+    print(f"rank {rank}, world_size {world_size}")
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     util.set_seed(args.seed)
     if rank == 0:
@@ -509,13 +509,11 @@ def main(rank, world_size, args):
     else:
         run = None
 
-    rank = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
     else:
         print("Using MoE")
-        device = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = MoE(
             dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
@@ -550,8 +548,7 @@ def main(rank, world_size, args):
         log = util.get_logger(args.save_dir, 'log_train')
         log.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
         log.info("Preparing Training Data...")
-        args.device = torch.device(
-            'cuda') if torch.cuda.is_available() else torch.device('cpu')
+        args.device = device
         if args.pretrain:
             # the train split will be used for pretraining and the 
             # finetune split will be used for finetuning
@@ -614,8 +611,7 @@ def main(rank, world_size, args):
             raise ValueError("model_type must be either distilbert or MoE")
 
     if args.do_eval:
-        args.device = torch.device(
-            'cuda') if torch.cuda.is_available() else torch.device('cpu')
+        args.device = device
         split_name = 'test'
         log = util.get_logger(args.save_dir, f'log_{split_name}')
         trainer = Trainer(args, log)

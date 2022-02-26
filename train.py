@@ -371,6 +371,8 @@ class Trainer():
         tbx = None
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
+        if args.freeze_basemodel:
+            model.freeze_base_model()
         if pretrain_dataloader is not None:
             pretrain_step_idx = 0
             for epoch_num in range(self.num_epochs_pretrain):
@@ -395,6 +397,8 @@ class Trainer():
                             })
                         if rank == 0:
                             pretrain_step_idx += world_size
+            if args.freeze_experts:
+                model.freeze_experts()
         for epoch_num in range(self.num_epochs):
             if rank == 0:
                 self.log.info(f'Epoch: {epoch_num}')
@@ -407,7 +411,6 @@ class Trainer():
                     start_logits, end_logits, loss = model(batch)
                     loss.backward()
                     optim.step()
-                    
                     if rank == 0:
                         progress_bar.update(len(input_ids)*world_size)
                         progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
@@ -530,11 +533,11 @@ def main(rank, world_size, args):
             loss_coef=1e-2,
             device=device
         ).to(rank)
-    model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+    # model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
-    if rank == 0:
-        run.config.update(args)
-        run.watch(model)
+    # if rank == 0:
+    #     run.config.update(args)
+    #     run.watch(model)
 
     tokenizer = DistilBertTokenizerFast.from_pretrained(
         'distilbert-base-uncased')

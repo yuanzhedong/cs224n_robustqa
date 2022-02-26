@@ -31,12 +31,14 @@ python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_
 With pretraining: 
 - The indomain_train and oodomain_train combined will be used for pretraining
 - The oodomain_train datasets will be used for finetuning
+- The base model will be freezed at pretraining
+- The experts weights will be frzeed after pretraining
 
 ```
 # without data aug
-python train.py --do-train --run-name baseline_moe --model-type moe --pretrain True
+python train.py --do-train --run-name baseline_moe --model-type moe --pretrain True --freeze_basemodel True --freeze_expert True
 # with data aug: 4 for pretraining and 8 for finetuning
-python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_aug_pretrain 4 --num_aug 8
+python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_aug_pretrain 4 --num_aug 8  --freeze_basemodel True --freeze_expert True
 ```
 
 ## Tracking experiments with WandB

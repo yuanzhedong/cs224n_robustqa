@@ -31,6 +31,8 @@ def get_train_test_args():
     parser.add_argument("--alpha_rs", default=0, required=False, type=float, help="percent of words in each sentence to be swapped")
     parser.add_argument("--alpha_rd", default=0, required=False, type=float, help="percent of words in each sentence to be deleted")
     parser.add_argument("--train_with_ood", default="simple_mix", type=str, help="Method to mix in-domain and OOD data. Options: [no_ood, simple_mix]. For wandb recording purpose")
+    parser.add_argument('--freeze_basemodel', type=bool, default=False, help="Freeze the base model weights when training MoE")
+    parser.add_argument('--freeze_expert', type=bool, default=False, help="Freeze the experts weights after pretraining")
 
     args = parser.parse_args()
     return args

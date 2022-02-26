@@ -561,7 +561,6 @@ def main(rank, world_size, args):
             # No finetuning dataset, only one train dataset
             train_dataset, _ = get_dataset(args, tokenizer, 'train', args.num_aug)
         log.info("Done loading training dataset")
-        sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
         sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
 
         if args.pretrain:

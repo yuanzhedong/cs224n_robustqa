@@ -456,8 +456,10 @@ def get_dataset(args, tokenizer, split_name):
 
 def main(rank, world_size, args):
     # define parser and arguments
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    if world_size > 1:
+        dist.init_process_group("nccl", rank=rank, world_size=world_size)
     print(rank, world_size)
+    
 
     util.set_seed(args.seed)
     if rank == 0:
@@ -465,12 +467,13 @@ def main(rank, world_size, args):
     else:
         run = None
 
+    rank = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
     else:
         print("Using MoE")
-        device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = MoE(
             dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
@@ -491,9 +494,10 @@ def main(rank, world_size, args):
             loss_coef=1e-2,
             device=device
         ).to(rank)
-    model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+    if world_size > 1:
+        model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
-    if rank == 0:
+    if rank == 0 or world_size == 1:
         run.config.update(args)
         run.watch(model)
 
@@ -508,13 +512,11 @@ def main(rank, world_size, args):
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
         train_dataset, _ = get_dataset(args, tokenizer, 'train')
         log.info("Done loading training dataset")
-        sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-
+        sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler= sampler)
         trainer = Trainer(args, log)
-        #sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
  
 
         val_loader = None

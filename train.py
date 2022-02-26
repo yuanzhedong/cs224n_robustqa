@@ -498,8 +498,10 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
 
 def main(rank, world_size, args):
     # define parser and arguments
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    if world_size > 1:
+        dist.init_process_group("nccl", rank=rank, world_size=world_size)
     print(rank, world_size)
+    
 
     util.set_seed(args.seed)
     if rank == 0:
@@ -507,12 +509,13 @@ def main(rank, world_size, args):
     else:
         run = None
 
+    rank = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
     else:
         print("Using MoE")
-        device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = MoE(
             dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
@@ -533,11 +536,12 @@ def main(rank, world_size, args):
             loss_coef=1e-2,
             device=device
         ).to(rank)
-    # model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+    if world_size > 1:
+        model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
-    # if rank == 0:
-    #     run.config.update(args)
-    #     run.watch(model)
+    if rank == 0 or world_size == 1:
+        run.config.update(args)
+        run.watch(model)
 
     tokenizer = DistilBertTokenizerFast.from_pretrained(
         'distilbert-base-uncased')
@@ -558,21 +562,22 @@ def main(rank, world_size, args):
             train_dataset, _ = get_dataset(args, tokenizer, 'train', args.num_aug)
         log.info("Done loading training dataset")
         sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+        sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
 
         if args.pretrain:
-            pretrain_sample = torch.utils.data.distributed.DistributedSampler(pretrain_dataset)
+            pretrain_sampler = RandomSampler(pretrain_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(pretrain_dataset)
             pretrain_loader = DataLoader(
                 pretrain_dataset,
                 batch_size=args.batch_size,
-                sampler=pretrain_sample
+                sampler=pretrain_sampler
             )
         else:
             pretrain_loader = None
+        
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler= sampler)
         trainer = Trainer(args, log)
-        #sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
  
 
         val_loader = None

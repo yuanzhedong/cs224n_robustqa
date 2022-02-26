@@ -28,6 +28,7 @@ os.environ['MASTER_ADDR'] = 'localhost'
 os.environ['MASTER_PORT'] = '12355'
 # for data augmentation
 import perform_eda
+import perform_back_translate
 import wandb
 from switch_transformer import SwitchTransformer, SwitchTransformerLayer, MultiHeadAttention, SwitchFeedForward, FeedForward
 
@@ -496,12 +497,21 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         return
     dataset_paths = DATASET_CONFIG[split_name]
     dataset_dict = None
+
     datasets_name = ''
     for dataset_path in dataset_paths:
         dataset_name = os.path.basename(dataset_path)
         datasets_name += f'_{dataset_name}'
+<<<<<<< HEAD
     if args.eda and num_aug > 0:
         datasets_name += '_eda' + f'_{num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
+=======
+    if args.eda:
+        datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
+    if args.back_translate:
+        datasets_name += '_back_translate'
+
+>>>>>>> added back translation using google trans. need to convert args back to orignal and comment out prints
     data_dir = f"cache/{split_name}"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
@@ -513,13 +523,27 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         print("not using cache, creating new encoding...")
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
+<<<<<<< HEAD
             if args.eda and split_name in ["train", "finetune"]:
+=======
+
+            if args.back_translate and split_name == "train": # also apends orignal sentences
+                dataset_dict_curr = perform_back_translate.perform_back_translate(
+                    args, dataset_path, dataset_name
+                )
+                dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+
+            if args.eda and split_name == "train":  # eda.py does appends original sentences to augmented sentences
+>>>>>>> added back translation using google trans. need to convert args back to orignal and comment out prints
                 dataset_dict_curr = perform_eda.perform_eda(
                     args, dataset_path, dataset_name
                 )
-            else:
+                dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+
+            if split_name != "train" or (not args.eda and not args.back_translate):
                 dataset_dict_curr = util.read_squad(dataset_path)
-            dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+                dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+
         data_encodings = read_and_process(
             args, tokenizer, dataset_dict, cache_path, split_name
         )
@@ -683,6 +707,7 @@ if __name__ == '__main__':
     args = get_train_test_args()
     os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 
+    world_size = 1
     if world_size == 1:
         main(0, 1, args)
     else:

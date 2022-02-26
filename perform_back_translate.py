@@ -128,21 +128,21 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
 
        # operate back translation on every context
         aug_contexts = []
-        trans_cn = []
+        #trans_cn = []
         trans_es = []
         for context_part in context_broken:
-            if context_part.strip() == "":
-                trans_cn.append("")
-                trans_es.append("")
+            if len(context_part.strip().split()) <= 2: # small phrases like "the " does not get translated
+                #trans_cn.append("")
+                trans_es.append(context_part.strip())
             else:
-                # print(context_part)
+                print(context_part)
                 # using chinese as media is not stable, sometimes translation fail on long and weird texts
                 # -> error happens within site-packages/googletrans/client.py, hard to fix
                 # -> change to french
                 # google trans performs the best on spanish
-                trans_cn.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr').result_text))
+                # trans_cn.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr').result_text))
                 trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es').result_text))
-        aug_contexts.append(trans_cn)
+        #aug_contexts.append(trans_cn)
         aug_contexts.append(trans_es)
 
         print("")

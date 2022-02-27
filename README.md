@@ -46,6 +46,8 @@ python train.py --do-train --run-name pretrain_moe --model-type moe --pretrain -
 ## Train switch transformer
 ```
 python train.py --do-train --run-name baseline_switch_transformer --model-type switch_transformer
+# Pretraining
+python train.py --do-train --run-name pretrain_moe --model-type moe --pretrain --num_experts 1 --num-epochs-pretrain 5 --num-epochs 100
 ```
 
 ## Tracking experiments with WandB

@@ -273,7 +273,13 @@ class SwitchTransformer(nn.Module):
         self.load_balancing_loss_ceof = 0.01
         self.n_experts = n_experts # used to calculate lb loss
 
+    def freeze_base_model(self):
+        for param in self.base_model.parameters():
+            param.requires_grad = False
 
+    def freeze_experts(self):
+        # TODO: find how to freeze the experts in the SwitchTransformer
+        pass
 
     #def forward(self, x: torch.Tensor, mask: torch.Tensor):
     def forward(self, batch):

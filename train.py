@@ -368,8 +368,6 @@ class Trainer():
         tbx = None
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
-        if args.freeze_basemodel:
-            model.freeze_base_model()
         if pretrain_dataloader is not None:
             pretrain_step_idx = 0
             pretrain_eval_count = 0
@@ -424,8 +422,9 @@ class Trainer():
                                 wandb.log({f'oodomain_val/pretrain_best_{k}': v})
                         if rank == 0:
                             pretrain_step_idx += world_size
-        if args.freeze_expert:
+        if args.freeze_basemodel:
             model.freeze_base_model()
+        if args.freeze_expert:
             model.freeze_experts()
         global_idx = 0
         global_idx_count = 1
@@ -642,12 +641,12 @@ def main(rank, world_size, args):
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
-        elif args.model_type == "moe":
+        elif args.model_type in ["moe", "switch_transformer"]:
             best_scores = trainer.train_moe(
                 model, pretrain_loader, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
             )
         else:
-            raise ValueError("model_type must be either distilbert or MoE")
+            raise ValueError("model_type must be either distilbert, moe, or switch_transformer")
 
     if args.do_eval:
         args.device = device

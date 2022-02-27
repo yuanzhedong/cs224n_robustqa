@@ -133,19 +133,14 @@ def prepare_train_data(dataset_dict, tokenizer):
     return tokenized_examples
 
 
-def read_and_process(args, tokenizer, dataset_dict, dataset_names, split):
-    # TODO: cache this if possible
-    data_dir = f"cache/{split}/"
-    Path(data_dir).mkdir(parents=True, exist_ok=True)
-    cache_path = f'{data_dir}/{dataset_names}_encodings.pt'
-    if os.path.exists(cache_path) and not args.recompute_features:
-        tokenized_examples = util.load_pickle(cache_path)
-    else:
-        if split == 'train':
-            tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
-        else:
-            tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
+def read_and_process(args, tokenizer, dataset_dict, cache_path, split):
+    if split == 'train':
+        tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
+        print("saving encodings at", cache_path, "...")
+        Path(os.path.dirname(cache_path)).mkdir(parents=True, exist_ok=True)
         util.save_pickle(tokenized_examples, cache_path)
+    else:
+        tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
     return tokenized_examples
 
 
@@ -436,23 +431,39 @@ def get_dataset(args, tokenizer, split_name):
     for dataset_path in dataset_paths:
         dataset_name = os.path.basename(dataset_path)
         datasets_name += f'_{dataset_name}'
-        if args.eda and split_name == "train":
-            dataset_dict_curr = perform_eda.perform_eda(
-                args, dataset_path, dataset_name
-            )
-        else:
-            dataset_dict_curr = util.read_squad(dataset_path)
-        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
-    data_encodings = read_and_process(
-        args, tokenizer, dataset_dict, datasets_name, split_name
-    )
+    if args.eda:
+        datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
+    data_dir = f"cache/{split_name}"
+    cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
+
+    if split_name == "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
+        print("loading existing", cache_path, "...")
+        data_encodings = util.load_pickle(cache_path)
+
+    else:
+        print("not using cache, creating new encoding...")
+        for dataset_path in dataset_paths:
+            dataset_name = os.path.basename(dataset_path)
+            if args.eda and split_name == "train":
+                dataset_dict_curr = perform_eda.perform_eda(
+                    args, dataset_path, dataset_name
+                )
+            else:
+                dataset_dict_curr = util.read_squad(dataset_path)
+            dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+        data_encodings = read_and_process(
+            args, tokenizer, dataset_dict, cache_path, split_name
+        )
+
     return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
 
 
 def main(rank, world_size, args):
     # define parser and arguments
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    if world_size > 1:
+        dist.init_process_group("nccl", rank=rank, world_size=world_size)
     print(rank, world_size)
+    
 
     util.set_seed(args.seed)
     if rank == 0:
@@ -460,6 +471,7 @@ def main(rank, world_size, args):
     else:
         run = None
 
+    rank = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
@@ -473,7 +485,7 @@ def main(rank, world_size, args):
         model = SwitchTransformer(layer=st_layer, n_layers=8, n_experts=args.num_experts, device=device).to(rank)        
     else:
         print("Using MoE")
-        device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = MoE(
             dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
@@ -494,9 +506,10 @@ def main(rank, world_size, args):
             loss_coef=1e-2,
             device=device
         ).to(rank)
-    model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+    if world_size > 1:
+        model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
-    if rank == 0:
+    if rank == 0 or world_size == 1:
         run.config.update(args)
         run.watch(model)
 
@@ -511,13 +524,11 @@ def main(rank, world_size, args):
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
         train_dataset, _ = get_dataset(args, tokenizer, 'train')
         log.info("Done loading training dataset")
-        sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-
+        sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler= sampler)
         trainer = Trainer(args, log)
-        #sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
  
 
         val_loader = None
@@ -590,7 +601,9 @@ if __name__ == '__main__':
     if world_size == 1:
         main(0, 1, args)
     else:
-        mp.spawn(main,
-                args=(world_size, args,),
-                nprocs=world_size,
-                join=True)
+        mp.spawn(
+            main,
+            args=(world_size, args,),
+            nprocs=world_size,
+            join=True
+        )

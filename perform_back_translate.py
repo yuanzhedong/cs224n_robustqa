@@ -136,7 +136,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 trans_fr.append(clean_line(context_part.strip()))
                 trans_es.append(clean_line(context_part.strip()))
             else:
-                print(context_part)
+                # print(context_part)
                 # using chinese as media is not stable, sometimes translation fail on long and weird texts
                 # -> error happens within site-packages/googletrans/client.py, hard to fix
                 # -> change to french
@@ -182,12 +182,13 @@ def perform_back_translate(args, path, dataset_name):
     data_dict_collapsed = read_squad(path)
     new_data_dict_collapsed = data_augmentation(args, dataset_name, data_dict_collapsed)
 
-    # merge with original unaugmented
-    new_data_dict_collapsed = util.merge(data_dict_collapsed, new_data_dict_collapsed)
-
     print("="*20)
     print("Data augmentation(back translation) is finished for file ", path)
     print("Number of original samples: ", len(data_dict_collapsed['question']))
+
+    # merge with original unaugmented
+    new_data_dict_collapsed = util.merge(data_dict_collapsed, new_data_dict_collapsed)
+
     print("Total number of samples after augmentation: ", len(new_data_dict_collapsed['question']))
     print("="*20 + "\t")
     return new_data_dict_collapsed

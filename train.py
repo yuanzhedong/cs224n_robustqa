@@ -394,7 +394,8 @@ class Trainer():
                                 "index": pretrain_step_idx,
                                 "pretrain/NLL": loss.item(),
                             })
-                        if (pretrain_step_idx >= pretrain_eval_count * self.eval_every) and rank == 0:                    
+                        # a hard coded eval step size for now
+                        if (pretrain_step_idx >= pretrain_eval_count * 10000) and rank == 0:                    
                             self.log.info(f'Evaluating at step {pretrain_step_idx}...')
                             pretrain_eval_count += 1
                             preds, curr_score = self.evaluate_moe(

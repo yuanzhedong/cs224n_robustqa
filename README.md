@@ -24,6 +24,13 @@ python train.py --do-train --run-name baseline_distilbert --model-type distilber
 python train.py --do-train --run-name baseline_moe --model-type moe
 ```
 
+
+
+## Train switch transformer
+```
+python train.py --do-train --run-name baseline_switch_transformer --model-type switch_transformer
+```
+
 ## Tracking experiments with WandB
 ### Set up the environment
 From the command line, install and log in to wandb

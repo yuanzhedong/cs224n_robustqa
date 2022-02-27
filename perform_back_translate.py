@@ -13,6 +13,7 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 import eda
 import re
+import util
 
 from BackTranslation import BackTranslation
 trans = BackTranslation(url=[
@@ -128,26 +129,27 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
 
        # operate back translation on every context
         aug_contexts = []
-        #trans_cn = []
+        trans_fr = []
         trans_es = []
         for context_part in context_broken:
-            if len(context_part.strip().split()) <= 2: # small phrases like "the " does not get translated
-                #trans_cn.append("")
-                trans_es.append(context_part.strip())
+            if len(context_part.strip().split()) <= 3: # incomplete phrases do not get translated -> get errors from google trans
+                trans_fr.append(clean_line(context_part.strip()))
+                trans_es.append(clean_line(context_part.strip()))
             else:
                 print(context_part)
                 # using chinese as media is not stable, sometimes translation fail on long and weird texts
                 # -> error happens within site-packages/googletrans/client.py, hard to fix
                 # -> change to french
                 # google trans performs the best on spanish
-                # trans_cn.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr').result_text))
-                trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es').result_text))
-        #aug_contexts.append(trans_cn)
+                # added sleeping=1 so not to get "429" from ['translate.google.com']
+                trans_fr.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr', sleeping=1).result_text))
+                trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es', sleeping=1).result_text))
+        aug_contexts.append(trans_fr)
         aug_contexts.append(trans_es)
 
-        print("")
-        print("text", text)
-        print("original:", context)
+        # print("")
+        # print("text", text)
+        # print("original:", context)
         for idx_context, aug_context in enumerate(aug_contexts):
 
             new_answer_dict = {'answer_start': [], 'text': []}
@@ -161,7 +163,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 new_answer_dict['text'].append(new_each_answer) 
             aug_context_string += aug_context[-1]
 
-            print("aug_context_string:", aug_context_string)
+            # print("aug_context_string:", aug_context_string)
 
             new_data_dict_collapsed['question'].append(clean_line(question_list[idx]))
             new_data_dict_collapsed['context'].append(aug_context_string)

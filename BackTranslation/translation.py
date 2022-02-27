@@ -25,10 +25,12 @@ class BackTranslation(object):
     """
 
     def __init__(self, url=['translate.google.com'], proxies: typing.Dict[str, httpcore.SyncHTTPTransport] = None):
-        self.translator = Translator(service_urls=url, proxies=proxies)
+        self.translator = Translator(service_urls=url, proxies=proxies) # JL: added for AttributeError: 'Translator' object has no attribute 'raise_Exception'
+        self.translator.raise_Exception = True
         self.Languages = LANGUAGES
         self.langCodes = LANG_CODES
-        self.MAX_LENGTH = 5000
+        #self.MAX_LENGTH = 5000
+        self.MAX_LENGTH = 4000 # JL: changed to smaller cap, to prevent errors
 
     def translate(self, text, src=None, tmp=None, sleeping=0):
 

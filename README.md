@@ -41,6 +41,13 @@ python train.py --do-train --run-name baseline_moe --model-type moe --pretrain T
 python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_aug_pretrain 4 --num_aug 8  --freeze_basemodel --freeze_expert
 ```
 
+
+
+## Train switch transformer
+```
+python train.py --do-train --run-name baseline_switch_transformer --model-type switch_transformer
+```
+
 ## Tracking experiments with WandB
 ### Set up the environment
 From the command line, install and log in to wandb

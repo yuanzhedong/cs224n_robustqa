@@ -365,9 +365,6 @@ class Trainer():
         world_size,
     ):
         optim = AdamW(model.parameters(), lr=self.lr)
-        global_idx = 0
-        global_idx_count = 1
-        best_scores = {'F1': -1.0, 'EM': -1.0}
         tbx = None
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
@@ -375,6 +372,8 @@ class Trainer():
             model.freeze_base_model()
         if pretrain_dataloader is not None:
             pretrain_step_idx = 0
+            pretrain_eval_count = 0
+            best_scores = {'F1': -1.0, 'EM': -1.0}
             for epoch_num in range(self.num_epochs_pretrain):
                 if rank == 0:
                     self.log.info(f'Pretraing Epoch: {epoch_num}')
@@ -395,10 +394,40 @@ class Trainer():
                                 "index": pretrain_step_idx,
                                 "pretrain/NLL": loss.item(),
                             })
+                        if (pretrain_step_idx >= pretrain_eval_count * self.eval_every) and rank == 0:                    
+                            self.log.info(f'Evaluating at step {pretrain_step_idx}...')
+                            pretrain_eval_count += 1
+                            preds, curr_score = self.evaluate_moe(
+                                model, dev_dataloader, dev_dict, return_preds=True)
+                            results_str = ', '.join(
+                                f'{k}: {v:05.2f}' for k, v in curr_score.items())
+                            for k, v in curr_score.items():
+                                tbx.add_scalar(f'pretrain_val/{k}', v, pretrain_step_idx)
+                                wandb.log({f'pretrain_val/{k}': v})
+                            self.log.info(f'Pretrain-In domain {results_str}')
+
+                            preds, curr_score = self.evaluate_moe(
+                                model, ood_dev_dataloader, ood_dev_dict, return_preds=True)
+                            results_str = ', '.join(
+                                f'{k}: {v:05.2f}' for k, v in curr_score.items())
+                            for k, v in curr_score.items():
+                                tbx.add_scalar(f'pretrain_oodomain_val/{k}', v, pretrain_step_idx)
+                                wandb.log({f'pretrain_oodomain_val/{k}': v})
+                            self.log.info(f'Pretrain-Out of domain {results_str}')
+
+                            if curr_score['F1'] >= best_scores['F1']:
+                                best_scores = curr_score
+                                self.log.info("Infer on testset...")
+                                self.test_moe(model, test_dataloader, test_dict, self.save_dir)
+                            for k, v in best_scores.items():
+                                wandb.log({f'oodomain_val/pretrain_best_{k}': v})
                         if rank == 0:
                             pretrain_step_idx += world_size
-            if args.freeze_expert:
-                model.freeze_experts()
+        if args.freeze_expert:
+            model.freeze_base_model()
+            model.freeze_experts()
+        global_idx = 0
+        global_idx_count = 1
         for epoch_num in range(self.num_epochs):
             if rank == 0:
                 self.log.info(f'Epoch: {epoch_num}')

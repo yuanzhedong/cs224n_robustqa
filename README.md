@@ -36,9 +36,9 @@ With pretraining:
 
 ```
 # without data aug
-python train.py --do-train --run-name baseline_moe --model-type moe --pretrain True --freeze_basemodel True --freeze_expert True
+python train.py --do-train --run-name baseline_moe --model-type moe --pretrain True --freeze_basemodel --freeze_expert
 # with data aug: 4 for pretraining and 8 for finetuning
-python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_aug_pretrain 4 --num_aug 8  --freeze_basemodel True --freeze_expert True
+python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_aug_pretrain 4 --num_aug 8  --freeze_basemodel --freeze_expert
 ```
 
 ## Tracking experiments with WandB

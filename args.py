@@ -9,7 +9,7 @@ def get_train_test_args():
     parser.add_argument('--num-visuals', type=int, default=10)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--save-dir', type=str, default='save/')
-    parser.add_argument('--pretrain', type=bool, default=False)
+    parser.add_argument('--pretrain', action='store_true')
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
@@ -31,8 +31,8 @@ def get_train_test_args():
     parser.add_argument("--alpha_rs", default=0, required=False, type=float, help="percent of words in each sentence to be swapped")
     parser.add_argument("--alpha_rd", default=0, required=False, type=float, help="percent of words in each sentence to be deleted")
     parser.add_argument("--train_with_ood", default="simple_mix", type=str, help="Method to mix in-domain and OOD data. Options: [no_ood, simple_mix]. For wandb recording purpose")
-    parser.add_argument('--freeze_basemodel', type=bool, default=False, help="Freeze the base model weights when training MoE")
-    parser.add_argument('--freeze_expert', type=bool, default=False, help="Freeze the experts weights after pretraining")
+    parser.add_argument('--freeze_basemodel', action='store_true', help="Freeze the base model weights when training MoE")
+    parser.add_argument('--freeze_expert', action='store_true', help="Freeze the experts weights after pretraining")
 
     args = parser.parse_args()
     return args

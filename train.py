@@ -134,7 +134,7 @@ def prepare_train_data(dataset_dict, tokenizer):
 
 
 def read_and_process(args, tokenizer, dataset_dict, cache_path, split):
-    if split == 'train':
+    if split in ['train', 'finetune']:
         tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
         print("saving encodings at", cache_path, "...")
         Path(os.path.dirname(cache_path)).mkdir(parents=True, exist_ok=True)
@@ -149,6 +149,7 @@ class Trainer():
     def __init__(self, args, log):
         self.lr = args.lr
         self.num_epochs = args.num_epochs
+        self.num_epochs_pretrain = args.num_epochs_pretrain
         self.device = args.device
         self.eval_every = args.eval_every
         self.path = os.path.join(args.save_dir, 'checkpoint')
@@ -349,15 +350,85 @@ class Trainer():
                         global_idx += world_size
         return best_scores
 
-    def train_moe(self, model, train_dataloader, dev_dataloader, dev_dict, ood_dev_dataloader, ood_dev_dict, test_dataloader, test_dict, rank, world_size):
+    def train_moe(
+        self,
+        model,
+        pretrain_dataloader,
+        train_dataloader,
+        dev_dataloader,
+        dev_dict,
+        ood_dev_dataloader,
+        ood_dev_dict,
+        test_dataloader,
+        test_dict,
+        rank,
+        world_size,
+    ):
         optim = AdamW(model.parameters(), lr=self.lr)
-        global_idx = 0
-        global_idx_count = 1
-        best_scores = {'F1': -1.0, 'EM': -1.0}
         tbx = None
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
+        if args.freeze_basemodel:
+            model.freeze_base_model()
+        if pretrain_dataloader is not None:
+            pretrain_step_idx = 0
+            pretrain_eval_count = 0
+            best_scores = {'F1': -1.0, 'EM': -1.0}
+            for epoch_num in range(self.num_epochs_pretrain):
+                if rank == 0:
+                    self.log.info(f'Pretraing Epoch: {epoch_num}')
+                    wandb.log({'Pretraing Epoch': epoch_num})
+                with torch.enable_grad(), tqdm(total=len(pretrain_dataloader.dataset)) as progress_bar:
+                    for batch in pretrain_dataloader:
+                        optim.zero_grad()
+                        model.train()
+                        input_ids = batch['input_ids'].to(rank)
+                        start_logits, end_logits, loss = model(batch)
+                        loss.backward()
+                        optim.step()
+                        if rank == 0:
+                            progress_bar.update(len(input_ids)*world_size)
+                            progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
+                            tbx.add_scalar('pretrain/NLL', loss.item(), pretrain_step_idx)
+                            wandb.log({
+                                "index": pretrain_step_idx,
+                                "pretrain/NLL": loss.item(),
+                            })
+                        # a hard coded eval step size for now
+                        if (pretrain_step_idx >= pretrain_eval_count * 10000) and rank == 0:                    
+                            self.log.info(f'Evaluating at step {pretrain_step_idx}...')
+                            pretrain_eval_count += 1
+                            preds, curr_score = self.evaluate_moe(
+                                model, dev_dataloader, dev_dict, return_preds=True)
+                            results_str = ', '.join(
+                                f'{k}: {v:05.2f}' for k, v in curr_score.items())
+                            for k, v in curr_score.items():
+                                tbx.add_scalar(f'pretrain_val/{k}', v, pretrain_step_idx)
+                                wandb.log({f'pretrain_val/{k}': v})
+                            self.log.info(f'Pretrain-In domain {results_str}')
 
+                            preds, curr_score = self.evaluate_moe(
+                                model, ood_dev_dataloader, ood_dev_dict, return_preds=True)
+                            results_str = ', '.join(
+                                f'{k}: {v:05.2f}' for k, v in curr_score.items())
+                            for k, v in curr_score.items():
+                                tbx.add_scalar(f'pretrain_oodomain_val/{k}', v, pretrain_step_idx)
+                                wandb.log({f'pretrain_oodomain_val/{k}': v})
+                            self.log.info(f'Pretrain-Out of domain {results_str}')
+
+                            if curr_score['F1'] >= best_scores['F1']:
+                                best_scores = curr_score
+                                self.log.info("Infer on testset...")
+                                self.test_moe(model, test_dataloader, test_dict, self.save_dir)
+                            for k, v in best_scores.items():
+                                wandb.log({f'oodomain_val/pretrain_best_{k}': v})
+                        if rank == 0:
+                            pretrain_step_idx += world_size
+        if args.freeze_expert:
+            model.freeze_base_model()
+            model.freeze_experts()
+        global_idx = 0
+        global_idx_count = 1
         for epoch_num in range(self.num_epochs):
             if rank == 0:
                 self.log.info(f'Epoch: {epoch_num}')
@@ -372,7 +443,6 @@ class Trainer():
                         continue
                     loss.backward()
                     optim.step()
-                    
                     if rank == 0:
                         progress_bar.update(len(input_ids)*world_size)
                         progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
@@ -422,19 +492,21 @@ class Trainer():
         return best_scores
 
 
-def get_dataset(args, tokenizer, split_name):
+def get_dataset(args, tokenizer, split_name, num_aug=0):
+    if split_name not in DATASET_CONFIG:
+        return
     dataset_paths = DATASET_CONFIG[split_name]
     dataset_dict = None
     datasets_name = ''
     for dataset_path in dataset_paths:
         dataset_name = os.path.basename(dataset_path)
         datasets_name += f'_{dataset_name}'
-    if args.eda:
-        datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
+    if args.eda and num_aug > 0:
+        datasets_name += '_eda' + f'_{num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
     data_dir = f"cache/{split_name}"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
-    if split_name == "train" and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
+    if split_name in ["train", "finetune"] and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
         print("loading existing", cache_path, "...")
         data_encodings = util.load_pickle(cache_path)
 
@@ -442,7 +514,7 @@ def get_dataset(args, tokenizer, split_name):
         print("not using cache, creating new encoding...")
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
-            if args.eda and split_name == "train":
+            if args.eda and split_name in ["train", "finetune"]:
                 dataset_dict_curr = perform_eda.perform_eda(
                     args, dataset_path, dataset_name
                 )
@@ -453,15 +525,15 @@ def get_dataset(args, tokenizer, split_name):
             args, tokenizer, dataset_dict, cache_path, split_name
         )
 
-    return util.QADataset(data_encodings, train=(split_name == 'train')), dataset_dict
+    return util.QADataset(data_encodings, train=(split_name in ["train", "finetune"])), dataset_dict
 
 
 def main(rank, world_size, args):
     # define parser and arguments
     if world_size > 1:
         dist.init_process_group("nccl", rank=rank, world_size=world_size)
-    print(rank, world_size)
-    
+    print(f"rank {rank}, world_size {world_size}")
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     util.set_seed(args.seed)
     if rank == 0:
@@ -469,7 +541,6 @@ def main(rank, world_size, args):
     else:
         run = None
 
-    rank = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
@@ -483,7 +554,6 @@ def main(rank, world_size, args):
         model = SwitchTransformer(layer=st_layer, n_layers=8, n_experts=args.num_experts, device=device).to(rank)        
     else:
         print("Using MoE")
-        device = rank if world_size > 1 else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = MoE(
             dim=args.dim,
             # increase the experts (# parameters) of your model without increasing computation
@@ -518,11 +588,28 @@ def main(rank, world_size, args):
         log = util.get_logger(args.save_dir, 'log_train')
         log.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
         log.info("Preparing Training Data...")
-        args.device = torch.device(
-            'cuda') if torch.cuda.is_available() else torch.device('cpu')
-        train_dataset, _ = get_dataset(args, tokenizer, 'train')
+        args.device = device
+        if args.pretrain:
+            # the train split will be used for pretraining and the 
+            # finetune split will be used for finetuning
+            pretrain_dataset, _ = get_dataset(args, tokenizer, 'train', args.num_aug_pretrain)
+            train_dataset, _ = get_dataset(args, tokenizer, 'finetune', args.num_aug)
+        else:
+            # No finetuning dataset, only one train dataset
+            train_dataset, _ = get_dataset(args, tokenizer, 'train', args.num_aug)
         log.info("Done loading training dataset")
         sampler = RandomSampler(train_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(train_dataset)
+
+        if args.pretrain:
+            pretrain_sampler = RandomSampler(pretrain_dataset) if world_size == 1 else torch.utils.data.distributed.DistributedSampler(pretrain_dataset)
+            pretrain_loader = DataLoader(
+                pretrain_dataset,
+                batch_size=args.batch_size,
+                sampler=pretrain_sampler
+            )
+        else:
+            pretrain_loader = None
+        
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler= sampler)
@@ -556,13 +643,15 @@ def main(rank, world_size, args):
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
-        else:
+        elif args.model_type == "moe":
             best_scores = trainer.train_moe(
-                model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size)
+                model, pretrain_loader, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
+            )
+        else:
+            raise ValueError("model_type must be either distilbert or MoE")
 
     if args.do_eval:
-        args.device = torch.device(
-            'cuda') if torch.cuda.is_available() else torch.device('cpu')
+        args.device = device
         split_name = 'test'
         log = util.get_logger(args.save_dir, f'log_{split_name}')
         trainer = Trainer(args, log)

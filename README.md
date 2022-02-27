@@ -19,9 +19,26 @@ python train.py --do-train --run-name baseline_distilbert --model-type distilber
 
 ## Train MoE
 
+Without pretraining: 
+- All of the indomain_train and oodomain_train datasets will be used for training
+```
+# without data aug
+python train.py --do-train --run-name baseline_moe --model-type moe
+# with data aug
+python train.py --do-train --run-name baseline_moe --model-type moe --eda --num_aug 4
+```
+
+With pretraining: 
+- The indomain_train and oodomain_train combined will be used for pretraining
+- The oodomain_train datasets will be used for finetuning
+- The base model and the experts weights will be frozen after pretraining
 
 ```
-python train.py --do-train --run-name baseline_moe --model-type moe
+# without data aug
+python train.py --do-train --run-name baseline_moe --model-type moe --pretrain True --freeze_expert
+python train.py --do-train --run-name pretrain_moe --model-type moe --pretrain --num_experts 1 --num-epochs-pretrain 5 --num-epochs 100 --freeze_expert
+# with data aug: 4 for pretraining and 8 for finetuning
+python train.py --do-train --run-name pretrain_moe --model-type moe --pretrain --num_experts 1 --num-epochs-pretrain 5 --num-epochs 100 --freeze_expert --eda --num_aug_pretrain 4 --num_aug 8
 ```
 
 

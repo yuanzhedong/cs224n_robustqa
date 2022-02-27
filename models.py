@@ -257,6 +257,14 @@ class MoE(nn.Module):
         self.qa_outputs = nn.Linear(768, 2)
         self.base_model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
 
+    def freeze_base_model(self):
+        for param in self.base_model.parameters():
+            param.requires_grad = False
+
+    def freeze_experts(self):
+        for param in self.experts.parameters():
+            param.requires_grad = False
+
     def forward(self, batch):
         input_ids = batch['input_ids'].to(self.device)
         attention_mask = batch['attention_mask'].to(self.device)

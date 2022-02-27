@@ -12,6 +12,8 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import Dataset
+import uuid
+
 
 def set_seed(seed):
     random.seed(seed)
@@ -61,15 +63,10 @@ def visualize(tbx, pred_dict, gold_dict, step, split, num_visuals):
                      global_step=step)
 
 
-def get_save_dir(base_dir, name, id_max=100):
-    for uid in range(1, id_max):
-        save_dir = os.path.join(base_dir, f'{name}-{uid:02d}')
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-            return save_dir
-
-    raise RuntimeError('Too many save directories created with the same name. \
-                       Delete old save directories or use another name.')
+def get_save_dir(base_dir, name):
+    save_dir = os.path.join(base_dir, f'{name}-{str(uuid.uuid4())}')
+    os.makedirs(save_dir)
+    return save_dir
 
 
 def filter_encodings(encodings):
@@ -179,7 +176,8 @@ class QADataset(Dataset):
         self.keys = ['input_ids', 'attention_mask']
         if train:
             self.keys += ['start_positions', 'end_positions']
-        assert(all(key in self.encodings for key in self.keys))
+        for key in self.keys:
+            assert key in self.encodings, f'{key} not in encodings!'
 
     def __getitem__(self, idx):
         return {key : torch.tensor(self.encodings[key][idx]) for key in self.keys}

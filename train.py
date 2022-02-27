@@ -188,8 +188,6 @@ class Trainer():
                 # Setup for forward
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
-                import pdb
-                pdb.set_trace()
                 batch_size = len(input_ids)
                 outputs = model(input_ids, attention_mask=attention_mask)
                 # Forward

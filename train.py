@@ -647,7 +647,7 @@ def main(rank, world_size, args):
                 model, pretrain_loader, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
             )
         else:
-            raise ValueError("model_type must be either distilbert or MoE")
+            raise ValueError("model_type must be either distilbert, moe, or switch_transformer")
 
     if args.do_eval:
         args.device = device

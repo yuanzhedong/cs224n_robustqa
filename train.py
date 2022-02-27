@@ -642,7 +642,7 @@ def main(rank, world_size, args):
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
-        elif args.model_type == "moe":
+        elif args.model_type in ["moe", "switch_transformer"]:
             best_scores = trainer.train_moe(
                 model, pretrain_loader, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
             )

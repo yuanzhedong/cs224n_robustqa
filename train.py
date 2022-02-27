@@ -368,8 +368,6 @@ class Trainer():
         tbx = None
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
-        if args.freeze_basemodel:
-            model.freeze_base_model()
         if pretrain_dataloader is not None:
             pretrain_step_idx = 0
             pretrain_eval_count = 0
@@ -424,8 +422,9 @@ class Trainer():
                                 wandb.log({f'oodomain_val/pretrain_best_{k}': v})
                         if rank == 0:
                             pretrain_step_idx += world_size
-        if args.freeze_expert:
+        if args.freeze_basemodel:
             model.freeze_base_model()
+        if args.freeze_expert:
             model.freeze_experts()
         global_idx = 0
         global_idx_count = 1

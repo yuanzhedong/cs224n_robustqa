@@ -533,7 +533,7 @@ def main(rank, world_size, args):
     if world_size > 1:
         dist.init_process_group("nccl", rank=rank, world_size=world_size)
     print(f"rank {rank}, world_size {world_size}")
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     util.set_seed(args.seed)
     if rank == 0:
@@ -546,7 +546,6 @@ def main(rank, world_size, args):
             "distilbert-base-uncased").to(rank)
     if args.model_type == "switch_transformer":
         print("using switch transformer")
-        device = rank if world_size > 1 else  torch.device("cuda" if torch.cuda.is_available() else "cpu")
         ff = FeedForward(args.dim, args.hidden_dim)
         attn=MultiHeadAttention(8, args.dim, 0.2)
         st_ff = SwitchFeedForward(capacity_factor=1.25,drop_tokens=False, n_experts=args.num_experts, expert=ff, d_model=args.dim, is_scale_prob=True)

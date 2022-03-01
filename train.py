@@ -368,10 +368,10 @@ class Trainer():
         tbx = None
         if rank == 0:
             tbx = SummaryWriter(self.save_dir)
+        best_scores = {'F1': -1.0, 'EM': -1.0}
         if pretrain_dataloader is not None:
             pretrain_step_idx = 0
             pretrain_eval_count = 0
-            best_scores = {'F1': -1.0, 'EM': -1.0}
             for epoch_num in range(self.num_epochs_pretrain):
                 if rank == 0:
                     self.log.info(f'Pretraing Epoch: {epoch_num}')

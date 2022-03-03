@@ -30,7 +30,7 @@ os.environ['MASTER_PORT'] = '12355'
 import perform_eda
 import perform_back_translate
 import wandb
-from switch_transformer import SwitchTransformer, SwitchTransformerLayer, MultiHeadAttention, SwitchFeedForward, FeedForward
+#from switch_transformer import SwitchTransformer, SwitchTransformerLayer, MultiHeadAttention, SwitchFeedForward, FeedForward
 
 
 
@@ -523,6 +523,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
 
             # for finetuning, back translate first because it is slower than eda
             if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
+                print("BACK-TRANSLATE")
                 dataset_dict_curr = perform_back_translate.perform_back_translate(
                     args, dataset_path, dataset_name
                 )
@@ -561,14 +562,14 @@ def main(rank, world_size, args):
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
-    if args.model_type == "switch_transformer":
+    elif args.model_type == "switch_transformer":
         print("using switch transformer")
         ff = FeedForward(args.dim, args.hidden_dim)
         attn=MultiHeadAttention(8, args.dim, 0.2)
         st_ff = SwitchFeedForward(capacity_factor=1.25,drop_tokens=False, n_experts=args.num_experts, expert=ff, d_model=args.dim, is_scale_prob=True)
         st_layer = SwitchTransformerLayer(d_model=args.dim, attn=attn, feed_forward=st_ff,dropout_prob=0.2)
         model = SwitchTransformer(layer=st_layer, n_layers=8, n_experts=args.num_experts, device=device).to(rank)        
-    else:
+    elif args.model_type =="moe":
         print("Using MoE")
         model = MoE(
             dim=args.dim,

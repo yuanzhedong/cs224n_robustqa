@@ -502,16 +502,12 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
     for dataset_path in dataset_paths:
         dataset_name = os.path.basename(dataset_path)
         datasets_name += f'_{dataset_name}'
-<<<<<<< HEAD
+
     if args.eda and num_aug > 0:
         datasets_name += '_eda' + f'_{num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
-=======
-    if args.eda:
-        datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
     if args.back_translate:
         datasets_name += '_back_translate'
 
->>>>>>> added back translation using google trans. need to convert args back to orignal and comment out prints
     data_dir = f"cache/{split_name}"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
@@ -523,18 +519,14 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         print("not using cache, creating new encoding...")
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
-<<<<<<< HEAD
-            if args.eda and split_name in ["train", "finetune"]:
-=======
 
-            if args.back_translate and split_name == "train": # also apends orignal sentences
+            if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
                 dataset_dict_curr = perform_back_translate.perform_back_translate(
                     args, dataset_path, dataset_name
                 )
                 dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
-            if args.eda and split_name == "train":  # eda.py does appends original sentences to augmented sentences
->>>>>>> added back translation using google trans. need to convert args back to orignal and comment out prints
+            if args.eda and split_name in ["train", "finetune"]:  # eda.py does appends original sentences to augmented sentences
                 dataset_dict_curr = perform_eda.perform_eda(
                     args, dataset_path, dataset_name
                 )

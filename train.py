@@ -502,14 +502,10 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
     for dataset_path in dataset_paths:
         dataset_name = os.path.basename(dataset_path)
         datasets_name += f'_{dataset_name}'
-<<<<<<< HEAD
 
     if args.eda and num_aug > 0:
         datasets_name += '_eda' + f'_{num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
-=======
-    if args.eda:
-        datasets_name += '_eda' + f'_{args.num_aug}_{args.alpha_sr}_{args.alpha_ri}_{args.alpha_rs}_{args.alpha_rd}'
->>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
+
     if args.back_translate:
         datasets_name += '_back_translate'
 
@@ -525,22 +521,14 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
 
-<<<<<<< HEAD
             # for finetuning, back translate first because it is slower than eda
             if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
-=======
-            if args.back_translate and split_name == "train": # also apends orignal sentences
->>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
                 dataset_dict_curr = perform_back_translate.perform_back_translate(
                     args, dataset_path, dataset_name
                 )
                 dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
-<<<<<<< HEAD
             if args.eda and split_name in ["train", "finetune"]:  # eda.py does appends original sentences to augmented sentences
-=======
-            if args.eda and split_name == "train":  # eda.py does appends original sentences to augmented sentences
->>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
                 dataset_dict_curr = perform_eda.perform_eda(
                     args, dataset_path, dataset_name
                 )
@@ -572,7 +560,7 @@ def main(rank, world_size, args):
 
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
-            "distilbert-base-uncased")#.to(rank)
+            "distilbert-base-uncased").to(rank)
     if args.model_type == "switch_transformer":
         print("using switch transformer")
         ff = FeedForward(args.dim, args.hidden_dim)
@@ -601,7 +589,7 @@ def main(rank, world_size, args):
             # multiplier on the auxiliary expert balancing auxiliary loss
             loss_coef=1e-2,
             device=device
-        )#.to(rank)
+        ).to(rank)
     if world_size > 1:
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
@@ -713,7 +701,6 @@ if __name__ == '__main__':
     args = get_train_test_args()
     os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 
-    world_size = 1
     if world_size == 1:
         main(0, 1, args)
     else:

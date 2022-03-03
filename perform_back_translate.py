@@ -69,7 +69,6 @@ def read_squad(path):
     return data_dict_collapsed
 
 def clean_line(sentence):
-<<<<<<< HEAD
     line = sentence.strip()
 
     line = line.replace('""', " ")
@@ -79,16 +78,6 @@ def clean_line(sentence):
 
     line = line.replace("\t", " ")
     line = line.replace("\n", " ")
-=======
-
-    line = sentence.strip()
-    line = line.replace("\t", " ")
-    line = line.replace("\n", " ")
-    line = line.replace("\\", "")
-    line = line.replace('"', "\"")
-    line = line.replace("'", "\'")
-
->>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
     #line = line.lower()
 
     line = re.sub(' +',' ',line) #delete extra spaces

@@ -69,6 +69,7 @@ def read_squad(path):
     return data_dict_collapsed
 
 def clean_line(sentence):
+<<<<<<< HEAD
     line = sentence.strip()
 
     line = line.replace('""', " ")
@@ -78,6 +79,16 @@ def clean_line(sentence):
 
     line = line.replace("\t", " ")
     line = line.replace("\n", " ")
+=======
+
+    line = sentence.strip()
+    line = line.replace("\t", " ")
+    line = line.replace("\n", " ")
+    line = line.replace("\\", "")
+    line = line.replace('"', "\"")
+    line = line.replace("'", "\'")
+
+>>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
     #line = line.lower()
 
     line = re.sub(' +',' ',line) #delete extra spaces
@@ -112,10 +123,15 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
 
     new_data_dict_collapsed = {'question': [], 'context': [], 'id': [], 'answer': []}
 
+<<<<<<< HEAD
     print("back-translating for", dataset_name, "...")
     total = len(answer_list)
     for idx, answer_dict in enumerate(answer_list): # answers for each context
         print(f'{idx}/{total}')
+=======
+    for idx, answer_dict in enumerate(answer_list): # answers for each context
+
+>>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
         context = context_list[idx]
         text = answer_dict['text']
         answer_start = answer_dict['answer_start']
@@ -132,6 +148,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
 
        # operate back translation on every context
         aug_contexts = []
+<<<<<<< HEAD
         # trans_fr = []
         trans_es = []
         for context_part in context_broken:
@@ -141,14 +158,30 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 trans_es.append(clean_line(context_part))
             else:
                 #print(context_part)
+=======
+        trans_fr = []
+        trans_es = []
+        for context_part in context_broken:
+            if len(context_part.strip().split()) <= 3: # incomplete phrases do not get translated -> get errors from google trans
+                trans_fr.append(clean_line(context_part.strip()))
+                trans_es.append(clean_line(context_part.strip()))
+            else:
+                # print(context_part)
+>>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
                 # using chinese as media is not stable, sometimes translation fail on long and weird texts
                 # -> error happens within site-packages/googletrans/client.py, hard to fix
                 # -> change to french
                 # google trans performs the best on spanish
                 # added sleeping=1 so not to get "429" from ['translate.google.com']
+<<<<<<< HEAD
                 # trans_fr.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr', sleeping=0.5).result_text))
                 trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es', sleeping=1).result_text)) # sleep = 1 works, sleep = 0.5 fails
         # aug_contexts.append(trans_fr)
+=======
+                trans_fr.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr', sleeping=1).result_text))
+                trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es', sleeping=1).result_text))
+        aug_contexts.append(trans_fr)
+>>>>>>> 834bd6612e0018e432943eefa760d48024ed32d6
         aug_contexts.append(trans_es)
 
         # print("")

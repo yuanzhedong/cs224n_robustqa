@@ -29,8 +29,8 @@ class BackTranslation(object):
         self.translator.raise_Exception = True
         self.Languages = LANGUAGES
         self.langCodes = LANG_CODES
-        #self.MAX_LENGTH = 5000
-        self.MAX_LENGTH = 4000 # JL: changed to smaller cap, to prevent errors
+        self.MAX_LENGTH = 5000
+        # self.MAX_LENGTH = 4000 # JL: changed to smaller cap, to prevent errors
 
     def translate(self, text, src=None, tmp=None, sleeping=0):
 

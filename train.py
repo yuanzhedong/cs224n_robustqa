@@ -15,7 +15,7 @@ from tensorboardX import SummaryWriter
 
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
-from models import MoE
+from models import MoE, SimpleEnsemble
 from args import get_train_test_args, DATASET_CONFIG
 import torch.nn as nn
 
@@ -163,9 +163,9 @@ class Trainer():
 
     def save(self, model, best_scores):
         if self.model_type == "distilbert":
-            #model.save_pretrained(self.path)
-            f1_score = best_scores["F1"]
-            torch.save(model.state_dict(), self.path + f"/model_f1_{f1_score}.pt")
+            model.save_pretrained(self.path)
+            #f1_score = best_scores["F1"]
+            #torch.save(model.state_dict(), self.path + f"/model_f1_{f1_score}.pt")
         else:
             print(f"Unsupported model type: {self.model_type}")
         # TODO: add save model
@@ -382,6 +382,8 @@ class Trainer():
                         model.train()
                         input_ids = batch['input_ids'].to(rank)
                         start_logits, end_logits, loss = model(batch)
+                        if loss is None:
+                            continue
                         loss.backward()
                         optim.step()
                         if rank == 0:
@@ -543,14 +545,15 @@ def main(rank, world_size, args):
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
             "distilbert-base-uncased").to(rank)
-    if args.model_type == "switch_transformer":
+        print("using distilbert")
+    elif args.model_type == "switch_transformer":
         print("using switch transformer")
         ff = FeedForward(args.dim, args.hidden_dim)
         attn=MultiHeadAttention(8, args.dim, 0.2)
         st_ff = SwitchFeedForward(capacity_factor=1.25,drop_tokens=False, n_experts=args.num_experts, expert=ff, d_model=args.dim, is_scale_prob=True)
         st_layer = SwitchTransformerLayer(d_model=args.dim, attn=attn, feed_forward=st_ff,dropout_prob=0.2)
         model = SwitchTransformer(layer=st_layer, n_layers=8, n_experts=args.num_experts, device=device).to(rank)        
-    else:
+    elif args.model_type =="moe":
         print("Using MoE")
         model = MoE(
             dim=args.dim,
@@ -572,6 +575,8 @@ def main(rank, world_size, args):
             loss_coef=1e-2,
             device=device
         ).to(rank)
+    else:
+        model = SimpleEnsemble(device=device).to(rank)
     if world_size > 1:
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
@@ -641,7 +646,7 @@ def main(rank, world_size, args):
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
-        elif args.model_type in ["moe", "switch_transformer"]:
+        elif args.model_type in ["moe", "switch_transformer", "simple_ensemble"]:
             best_scores = trainer.train_moe(
                 model, pretrain_loader, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
             )

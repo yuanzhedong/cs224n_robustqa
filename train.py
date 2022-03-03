@@ -512,7 +512,8 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
     data_dir = f"cache/{split_name}"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
 
-    if split_name in ["train", "finetune"] and os.path.exists(cache_path) and not args.recompute_features: # avoid recomputing encodings.pt
+    if split_name in ["train", "finetune"] and os.path.exists(cache_path) and args.use_cache: 
+        # avoid recomputing encodings.pt
         print("loading existing", cache_path, "...")
         data_encodings = util.load_pickle(cache_path)
 
@@ -547,6 +548,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
 
 
 def main(rank, world_size, args):
+    assert args.model_type in ["distilbert", "moe", "switch_transfomer"], "model must be either distilbert, moe, or switch_transformer"
     # define parser and arguments
     if world_size > 1:
         dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -591,6 +593,8 @@ def main(rank, world_size, args):
             loss_coef=1e-2,
             device=device
         ).to(rank)
+    else:
+        raise ValueError("model_type must be either distilbert, moe, or switch_transformer")
     if world_size > 1:
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 

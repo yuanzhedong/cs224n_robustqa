@@ -15,18 +15,84 @@ import eda
 import re
 import util
 
+# back translation using google trans
 from BackTranslation import BackTranslation
 trans = BackTranslation(url=[
       'translate.google.com',
       'translate.google.co.kr',
     ], proxies={'http': '127.0.0.1:1234', 'http://host.name': '127.0.0.1:4012'})
 
-# Adapted from https://github.com/AntheaLi/cs224nProject/tree/fb08ba61f9d4d86c8e6a2a48f6cfe989a0f3a65b
-# Different from the other project implementation:
-# 1. No train_fraction. Do data augmentation on 100% of data. Plus hyperparameters can be applied to augmentation to adjust for percentage.
-# 2. No answer_words. Do not avoid eda operation on words from answer_dict['text']. 
-#    Only avoid eda operation on stop words, which is what the original implementation does.
-#    --> added it back for now for easier identification of answer starting point. will try to remove it later.
+
+# back translation using transformer
+from transformers import MarianMTModel, MarianTokenizer
+from nltk.tokenize import sent_tokenize
+
+MAX_LENGTH = 1000
+
+fr_model_name = 'Helsinki-NLP/opus-mt-en-fr'
+fr_tokenizer = MarianTokenizer.from_pretrained(fr_model_name)
+fr_model = MarianMTModel.from_pretrained(fr_model_name)
+
+en_model_name = 'Helsinki-NLP/opus-mt-fr-en'
+en_tokenizer = MarianTokenizer.from_pretrained(en_model_name)
+en_model = MarianMTModel.from_pretrained(en_model_name)
+
+def _split_segement(sentences):
+        """
+        Split the long sentences into multiple sentences whose lengths are less than MAX_LENGTH.
+
+        :param sentences: the list of tokenized sentences from source text
+        :return: the list of sentences with proper length
+        :rtype: list
+        """
+        sentences_list = []
+        block = ""
+        for sentence in sentences:
+            if len((block.rstrip() + ' ' + sentence).encode('utf-8')) > MAX_LENGTH:
+                sentences_list.append(block.rstrip())
+                block = sentence
+            else:
+                block = block + sentence + ' '
+        sentences_list.append(block.rstrip())
+        return sentences_list
+
+def translate(texts, model, tokenizer, language="fr"):
+    # Prepare the text data into appropriate format for the model
+    template = lambda text: f"{text}" if language == "en" else f">>{language}<< {text}"
+    src_texts = [template(text) for text in texts]
+
+    # Generate translation using model
+    translated = model.generate(**tokenizer(src_texts, return_tensors="pt", padding=True)) 
+
+    # Convert the generated tokens indices back into text
+    translated_texts = tokenizer.batch_decode(translated, skip_special_tokens=True)
+    
+    return translated_texts
+
+def back_translate(texts, source_lang="en", target_lang="fr"):
+    texts = texts[0] # we are only inputing ["text"]
+    # check the length of text
+    if len(texts) > MAX_LENGTH:
+        back_translated_texts = []
+        original_sentences = _split_segement(sent_tokenize(texts))
+        for sentence in original_sentences:
+            fr_texts = translate([sentence], fr_model, fr_tokenizer, language=target_lang) 
+            back_translated = translate(fr_texts, en_model, en_tokenizer, language=source_lang)
+            back_translated_texts.append(back_translated[0])
+        back_text = ' '.join(back_translated_texts)
+        back_text.rstrip()
+        return back_text
+    else:
+        # Translate from source to target language (fr)
+        fr_texts = translate(texts, fr_model, fr_tokenizer, language=target_lang)
+
+        # Translate from target language back to source language (en)
+        back_translated_texts = translate(fr_texts, en_model, en_tokenizer, language=source_lang)
+
+        return back_translated_texts[0] # back_translated_texts is list of strings
+
+
+##########################################################################################
 
 # same function from util.py
 def read_squad(path):
@@ -132,15 +198,17 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
 
        # operate back translation on every context
         aug_contexts = []
-        # trans_fr = []
+        #trans_fr = []
         trans_es = []
         for context_part in context_broken:
             context_part = clean_line(context_part)
             if len(context_part.split()) <= 5: # incomplete phrases do not get translated -> get errors from google trans
-                # trans_fr.append(clean_line(context_part))
+                #trans_fr.append(clean_line(context_part))
                 trans_es.append(clean_line(context_part))
             else:
                 #print(context_part)
+
+                # Google trans
                 # using chinese as media is not stable, sometimes translation fail on long and weird texts
                 # -> error happens within site-packages/googletrans/client.py, hard to fix
                 # -> change to french
@@ -148,12 +216,15 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 # added sleeping=1 so not to get "429" from ['translate.google.com']
                 # trans_fr.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr', sleeping=0.5).result_text))
                 trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es', sleeping=1).result_text)) # sleep = 1 works, sleep = 0.5 fails
-        # aug_contexts.append(trans_fr)
+                
+                # NMT
+                # trans_fr.append(clean_line(back_translate([context_part], source_lang="en", target_lang="fr")))
+        #aug_contexts.append(trans_fr)
         aug_contexts.append(trans_es)
 
-        # print("")
-        # print("text", text)
-        # print("original:", context)
+        print("")
+        print("text", text)
+        print("original:", context)
         for idx_context, aug_context in enumerate(aug_contexts):
 
             new_answer_dict = {'answer_start': [], 'text': []}
@@ -167,7 +238,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 new_answer_dict['text'].append(new_each_answer) 
             aug_context_string += aug_context[-1]
 
-            # print("aug_context_string:", aug_context_string)
+            print("aug_context_string:", aug_context_string)
 
             new_data_dict_collapsed['question'].append(clean_line(question_list[idx]))
             new_data_dict_collapsed['context'].append(aug_context_string)

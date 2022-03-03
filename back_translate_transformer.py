@@ -47,7 +47,6 @@ def back_translate(texts, source_lang="en", target_lang="fr"):
     
     return fr_texts, back_translated_texts
 
-en_texts = ['This is so cool', 'I hated the food', 'They were very helpful']
-aug_texts = back_translate(en_texts, source_lang="en", target_lang="fr")
+aug_texts = back_translate(['This is so cool'], source_lang="en", target_lang="fr")
 
 print(aug_texts)

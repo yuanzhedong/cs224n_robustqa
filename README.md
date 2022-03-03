@@ -13,7 +13,10 @@
 ## Train baseline
 
 ```
-python train.py --do-train --run-name baseline_distilbert --model-type distilbert
+CUDA_VISIBLE_DEVICES=0 python train.py --do-train --run-name baseline_nat_questions --model-type distilbert
+CUDA_VISIBLE_DEVICES=0 python train.py --do-train --run-name baseline_newsqa --model-type distilbert > baseline_newsqa.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 python train.py --do-train --run-name baseline_squad --model-type distilbert
+
 ```
 
 
@@ -49,7 +52,11 @@ python train.py --do-train --run-name baseline_switch_transformer --model-type s
 # Pretraining
 python train.py --do-train --run-name pretrain_moe --model-type moe --pretrain --num_experts 1 --num-epochs-pretrain 5 --num-epochs 100
 ```
+## Train ensemble
+```
+CUDA_VISIBLE_DEVICES=0 python train.py --do-train --run-name baseline_simple_ensemble --model-type simple_ensemble --freeze_basemodel 
 
+```
 ## Tracking experiments with WandB
 ### Set up the environment
 From the command line, install and log in to wandb

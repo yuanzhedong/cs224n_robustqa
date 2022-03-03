@@ -306,3 +306,61 @@ class MoE(nn.Module):
             end_loss = loss_fct(end_logits, end_positions)
             loss = loss + (start_loss + end_loss) / 2
         return start_logits, end_logits, loss
+
+
+class SimpleEnsemble(nn.Module):
+    def __init__(self,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+        super().__init__()
+        self.device = device
+
+        self.checkpoint_paths = ["./save/baseline_newsqa-17e4a034-e5a6-41ab-90b0-49bf695db7ac/checkpoint/", \
+                                "./save/baseline_squad-5894db56-5734-4288-9112-192ee3f901cb/checkpoint/", \
+                                "./save/baseline_nat_questions-5e5cf00c-c0e3-4463-98be-3dac0674ffd2/checkpoint/"]
+
+        
+        self.base_models = [DistilBertForQuestionAnswering.from_pretrained(checkpoint_path).to(self.device) for checkpoint_path in self.checkpoint_paths]
+        self.linear1 = nn.Linear(768 * 3, 2048)
+        self.relu = nn.ReLU()
+        self.linear2 = nn.Linear(2048, 768)
+        self.qa_outputs = nn.Linear(768, 2)
+
+
+    def freeze_base_model(self):
+        for base_model in self.base_models:
+            for param in base_model.parameters():
+                param.requires_grad = False
+
+    def forward(self, batch):
+        input_ids = batch['input_ids'].to(self.device)
+        attention_mask = batch['attention_mask'].to(self.device)
+        start_positions = batch['start_positions'].to(self.device) if 'start_positions' in batch.keys() else None
+        end_positions = batch['end_positions'].to(self.device) if 'end_positions' in batch.keys() else None
+
+        outputs = [ base_model(input_ids, attention_mask=attention_mask, start_positions=None, end_positions=None, output_hidden_states=True) for base_model in self.base_models]
+
+        hidden_states = [output.hidden_states[-1] for output in outputs]
+        out = torch.cat(hidden_states, dim=-1)
+        out = self.linear2(self.relu(self.linear1(out)))
+        logits = self.qa_outputs(out)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
+        end_logits = end_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
+
+        loss = None
+        if start_positions is not None and end_positions is not None:
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions = start_positions.clamp(
+                0, ignored_index)
+            end_positions = end_positions.clamp(0, ignored_index)
+
+            loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            loss = (start_loss + end_loss) / 2
+        return start_logits, end_logits, loss

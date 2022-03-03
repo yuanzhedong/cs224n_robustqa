@@ -16,3 +16,6 @@ dependencies:
     - tensorboardX
     - wandb
     - nltk
+    - BackTranslation
+    - transformers
+    - sentencepiece

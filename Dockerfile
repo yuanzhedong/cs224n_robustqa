@@ -11,4 +11,4 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install tqdm tensorboard torchmetrics torch-fidelity ipywidgets urllib3 tensorboardX spacy numpy tensorflow
-RUN pip3 install ujson transformers==4.2.2 wandb nltk BackTranslation
+RUN pip3 install ujson transformers==4.2.2 wandb nltk BackTranslation transformers sentencepiece

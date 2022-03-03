@@ -14,7 +14,7 @@ def get_train_test_args():
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
     parser.add_argument('--model-type', type=str, default='distilbert')
-    parser.add_argument('--recompute-features', default=True, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
+    parser.add_argument('--use_cache', action='store_true') # only use_cache if the argument is present
     parser.add_argument('--do-train', action='store_true')
     parser.add_argument('--do-eval', action='store_true')
     parser.add_argument('--sub-file', type=str, default='')
@@ -23,7 +23,7 @@ def get_train_test_args():
     parser.add_argument('--dim', type=int, default=768)
     parser.add_argument('--num_experts', type=int, default=16)
     parser.add_argument('--hidden_dim', type=int, default=768 * 4)
-    parser.add_argument('--eda', default=False, type=lambda x: (str(x).lower() == 'true')) # data augmentation, bool
+    parser.add_argument('--eda', action='store_true')
     parser.add_argument("--num_aug_pretrain", default=4, required=False, type=int, help="number of augmented sentences per original sentence for pretraining")
     parser.add_argument("--num_aug", default=4, required=False, type=int, help="number of augmented sentences per original sentence")
     parser.add_argument("--alpha_sr", default=0.3, required=False, type=float, help="percent of words in each sentence to be replaced by synonyms")

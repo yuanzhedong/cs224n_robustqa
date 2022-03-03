@@ -70,7 +70,7 @@ TODO: https://docs.wandb.ai/guides/track/advanced/distributed-training
 ## Train MoE with data augmentation
 ```
 pip install -U nltk
-python train.py --do-train --run-name baseline_moe --model-type moe --eda true
+python train.py --do-train --run-name baseline_moe --model-type moe --eda
 ```
 Given a sentence in the training set, we perform the following operations:
 
@@ -84,3 +84,9 @@ There are 5 parameters that can be adjusted:
 
 So for example, if you want `16` augmented sentences per original sentence and replace 5% of words by synonyms (`alpha_sr=0.05`), delete 10% of words (`alpha_rd=0.1`) and do not apply random insertion (`alpha_ri=0.0`) and random swap (`alpha_rs=0.0`), you would do:
 `--num_aug=16 --alpha_sr=0.05 --alpha_rd=0.1 --alpha_ri=0.0 --alpha_rs=0.0`
+
+If you want to use cached data without recomputing the data augmentation, you can add an argument `--use_cache`.
+
+```
+python train.py --do-train --run-name baseline_moe --model-type moe --eda --use_cache
+```

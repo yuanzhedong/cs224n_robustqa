@@ -136,7 +136,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
         trans_es = []
         for context_part in context_broken:
             context_part = clean_line(context_part)
-            if len(context_part.split()) <= 4: # incomplete phrases do not get translated -> get errors from google trans
+            if len(context_part.split()) <= 5: # incomplete phrases do not get translated -> get errors from google trans
                 # trans_fr.append(clean_line(context_part))
                 trans_es.append(clean_line(context_part))
             else:
@@ -147,7 +147,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 # google trans performs the best on spanish
                 # added sleeping=1 so not to get "429" from ['translate.google.com']
                 # trans_fr.append(clean_line(trans.translate(context_part, src='en', tmp = 'fr', sleeping=0.5).result_text))
-                trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es', sleeping=0.1).result_text))
+                trans_es.append(clean_line(trans.translate(context_part, src='en', tmp = 'es', sleeping=1).result_text)) # sleep = 1 works, sleep = 0.5 fails
         # aug_contexts.append(trans_fr)
         aug_contexts.append(trans_es)
 

@@ -520,6 +520,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
 
+            # for finetuning, back translate first because it is slower than eda
             if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
                 dataset_dict_curr = perform_back_translate.perform_back_translate(
                     args, dataset_path, dataset_name
@@ -558,7 +559,7 @@ def main(rank, world_size, args):
 
     if args.model_type == "distilbert":
         model = DistilBertForQuestionAnswering.from_pretrained(
-            "distilbert-base-uncased").to(rank)
+            "distilbert-base-uncased")#.to(rank)
     if args.model_type == "switch_transformer":
         print("using switch transformer")
         ff = FeedForward(args.dim, args.hidden_dim)
@@ -587,7 +588,7 @@ def main(rank, world_size, args):
             # multiplier on the auxiliary expert balancing auxiliary loss
             loss_coef=1e-2,
             device=device
-        ).to(rank)
+        )#.to(rank)
     if world_size > 1:
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
@@ -699,6 +700,7 @@ if __name__ == '__main__':
     args = get_train_test_args()
     os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 
+    world_size = 1
     if world_size == 1:
         main(0, 1, args)
     else:

@@ -26,17 +26,30 @@ trans = BackTranslation(url=[
 # back translation using transformer
 from transformers import MarianMTModel, MarianTokenizer
 from nltk.tokenize import sent_tokenize
+
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 print("device:", device) # back translation on device: cuda:0
 
-MAX_LENGTH = 2000 # on VM, has to be 200, otherwise CUDA out of memory
+# src = 'en'  # source language
+# trg = 'de'  # target language
+# mname = f'Helsinki-NLP/opus-mt-{src}-{trg}'
+# model = MarianMTModel.from_pretrained(mname).to(device).half()  # fp16 should save lots of memory
+# tok = MarianTokenizer.from_pretrained(mname)
+# translations = []
+# for src_text_list in chunks(data, 8): # copy paste chunks fn from run_eval.py, consider wrapping tqdm_notebook
+#     batch = tok.prepare_translation_batch(src_text_list).to(device)
+#     gen = model.generate(**batch)
+#     german: List[str] = tok.batch_decode(gen, skip_special_tokens=True)
+#     translations.extend(german)
+
+MAX_LENGTH = 100 # on VM, otherwise CUDA out of memory, using .half() for models also to save memory
 
 fr_model_name = 'Helsinki-NLP/opus-mt-en-fr'
 fr_tokenizer = MarianTokenizer.from_pretrained(fr_model_name) # 'MarianTokenizer' object has no attribute 'to'
-fr_model = MarianMTModel.from_pretrained(fr_model_name).to(device) 
+fr_model = MarianMTModel.from_pretrained(fr_model_name).to(device).half()
 en_model_name = 'Helsinki-NLP/opus-mt-fr-en'
 en_tokenizer = MarianTokenizer.from_pretrained(en_model_name)
-en_model = MarianMTModel.from_pretrained(en_model_name).to(device)
+en_model = MarianMTModel.from_pretrained(en_model_name).to(device).half()
 
 def _split_segement(sentences):
         """
@@ -213,7 +226,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 for i, language in enumerate(args.languages):
                     back_translated[i].append(clean_line(trans.translate(context_part, src='en', tmp = language, sleeping=0.5).result_text))                
                     # NMT
-                    # back_translated[i].append(clean_line(back_translate([context_part], source_lang="en", target_lang=language)))
+                    #back_translated[i].append(clean_line(back_translate([context_part], source_lang="en", target_lang=language)))
         
         for i, language in enumerate(args.languages):
             aug_contexts.append(back_translated[i]) 

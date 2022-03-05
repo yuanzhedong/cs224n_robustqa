@@ -69,7 +69,13 @@ TODO: https://docs.wandb.ai/guides/track/advanced/distributed-training
 
 ## Train MoE with data augmentation
 ```
-pip install -U nltk
+python train.py --do-train --run-name baseline_moe --model-type moe --back_translate --languages es fr
+```
+For back translation through both Spanish and French. Now back translation only applies to finetuning train set. It takes \~ 20 min to get the default back translated through Spanish train set. Time increases linearly with the number of languages.
+
+Cache can be found in: `cache/finetune/_duorc_race_relation_extraction_back_translate_es_fr_encodings.pt`
+
+```
 python train.py --do-train --run-name baseline_moe --model-type moe --eda
 ```
 Given a sentence in the training set, we perform the following operations:

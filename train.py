@@ -526,7 +526,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
             dataset_name = os.path.basename(dataset_path)
 
             # for finetuning, back translate first because it is slower than eda
-            if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
+            if args.back_translate and split_name == "finetune": # also apends orignal sentences
                 print("BACK-TRANSLATE", split_name)
                 dataset_dict_curr = perform_back_translate.perform_back_translate(
                     args, dataset_path, dataset_name

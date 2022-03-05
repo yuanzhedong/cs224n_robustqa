@@ -551,7 +551,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
 
 
 def main(rank, world_size, args):
-    assert args.model_type in ["distilbert", "moe", "switch_transfomer"], "model must be either distilbert, moe, or switch_transformer"
+    assert args.model_type in ["distilbert", "moe", "switch_transformer"], "model must be either distilbert, moe, or switch_transformer"
     # define parser and arguments
     if world_size > 1:
         dist.init_process_group("nccl", rank=rank, world_size=world_size)

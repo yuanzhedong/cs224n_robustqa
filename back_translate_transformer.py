@@ -12,13 +12,15 @@ Original file is located at
 
 from transformers import MarianMTModel, MarianTokenizer
 
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+print("device:", device)
 fr_model_name = 'Helsinki-NLP/opus-mt-en-fr'
-fr_tokenizer = MarianTokenizer.from_pretrained(fr_model_name)
-fr_model = MarianMTModel.from_pretrained(fr_model_name)
+fr_tokenizer = MarianTokenizer.from_pretrained(fr_model_name).to(device)
+fr_model = MarianMTModel.from_pretrained(fr_model_name).to(device)
 
 en_model_name = 'Helsinki-NLP/opus-mt-fr-en'
-en_tokenizer = MarianTokenizer.from_pretrained(en_model_name)
-en_model = MarianMTModel.from_pretrained(en_model_name)
+en_tokenizer = MarianTokenizer.from_pretrained(en_model_name).to(device)
+en_model = MarianMTModel.from_pretrained(en_model_name).to(device)
 
 def translate(texts, model, tokenizer, language="fr"):
     # Prepare the text data into appropriate format for the model
@@ -29,7 +31,7 @@ def translate(texts, model, tokenizer, language="fr"):
 
     
     # Generate translation using model
-    translated = model.generate(**tokenizer(src_texts, return_tensors="pt", padding=True))
+    translated = model.generate(**tokenizer(src_texts, return_tensors="pt", padding=True).to(device))
 
     # Convert the generated tokens indices back into text
     translated_texts = tokenizer.batch_decode(translated, skip_special_tokens=True)

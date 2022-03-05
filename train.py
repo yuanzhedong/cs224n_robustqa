@@ -508,9 +508,12 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
 
     if args.back_translate:
         datasets_name += '_back_translate'
+        for language in args.languages:
+            datasets_name += f'_{language}'
 
     data_dir = f"cache/{split_name}"
     cache_path = f'{data_dir}/{datasets_name}_encodings.pt'
+    print("cache path:", cache_path)
 
     if split_name in ["train", "finetune"] and os.path.exists(cache_path) and args.use_cache: 
         # avoid recomputing encodings.pt
@@ -523,8 +526,8 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
             dataset_name = os.path.basename(dataset_path)
 
             # for finetuning, back translate first because it is slower than eda
-            if args.back_translate and split_name == "finetune": # also apends orignal sentences
-                print("BACK-TRANSLATE")
+            if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
+                print("BACK-TRANSLATE", split_name)
                 dataset_dict_curr = perform_back_translate.perform_back_translate(
                     args, dataset_path, dataset_name
                 )

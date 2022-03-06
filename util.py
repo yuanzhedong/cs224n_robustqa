@@ -14,6 +14,7 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 import uuid
 
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -81,19 +82,10 @@ def filter_encodings(encodings):
     return encodings_filtered
 
 def merge(encodings, new_encoding):
-    # print(f'in util.merge: encodings = {encodings}, new_encoding = {new_encoding}\n')
-    # encodings = None, new_encoding = {'question': ['where is the home town show on hgtv filmed', 'where was the john wayne movie hondo filmed', 'who does candace like in phineas and ferb', 'who began to rule ...
     if not encodings:
         return new_encoding
     else:
         for key in new_encoding:
-            #print(f'encodings[key] = {encodings[key]}\nnew_encoding[key] = {new_encoding[key]}')
-            # encodings[key] = ['where is the home town show on hgtv filmed', 'where was the john wayne movie hondo filmed', 'who does candace like in phineas and ferb', 'who began to rule ...
-            #print(f'key = {key}')
-            # key = question
-            # key = context
-            # key = id
-            # key = answer...
             encodings[key] += new_encoding[key]
         return encodings
 

@@ -30,7 +30,7 @@ os.environ['MASTER_PORT'] = '12355'
 import perform_eda
 import perform_back_translate
 import wandb
-#from switch_transformer import SwitchTransformer, SwitchTransformerLayer, MultiHeadAttention, SwitchFeedForward, FeedForward
+from switch_transformer import SwitchTransformer, SwitchTransformerLayer, MultiHeadAttention, SwitchFeedForward, FeedForward
 
 
 

@@ -138,7 +138,9 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
 
        # operate eda on every context
         context = clean_line(context_list[idx])
-        aug_contexts = eda.eda(context, answer_words, alpha_sr, alpha_ri, alpha_rs, alpha_rd, num_aug)
+        aug_contexts = []
+        trans_cn = trans.translate(context, src='en', tmp = 'zh-cn')
+        aug_contexts.append(trans_cn)
         #print("augmented versions:", len(aug_contexts))
         for idx_context, aug_context in enumerate(aug_contexts):
             aug_context = clean_line(aug_context)
@@ -149,7 +151,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 if start != -1:
                     #print("found!!!")
                     found_answer_counter += 1
-                    new_answer_dict['answer_start'].append(start)
+                    new_answer_dict['answer_start'].append(answer_dict['answer_start'])
                     new_answer_dict['text'].append(new_each_answer)
                 else:
                     lost_answer_counter += 1
@@ -159,7 +161,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 new_data_dict_collapsed['question'].append(clean_line(question_list[idx]))
                 new_data_dict_collapsed['context'].append(aug_context)
                 new_data_dict_collapsed['answer'].append(new_answer_dict)
-                new_data_dict_collapsed['id'].append(str(idx_context)+"eda"+id_list[idx])
+                new_data_dict_collapsed['id'].append(str(idx_context)+"translate"+id_list[idx])
     print("lost answer:", lost_answer_counter, "; found answer:", found_answer_counter)
     # Save augmented data to JSON file
     save_json_file = open("datasets/eda_"+dataset_name+".json", "w+")

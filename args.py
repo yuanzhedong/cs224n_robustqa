@@ -23,6 +23,8 @@ def get_train_test_args():
     parser.add_argument('--dim', type=int, default=768)
     parser.add_argument('--num_experts', type=int, default=16)
     parser.add_argument('--hidden_dim', type=int, default=768 * 4)
+    parser.add_argument('--back_translate', action='store_true')
+    parser.add_argument('--languages', nargs='+', default=['es'])
     parser.add_argument('--eda', action='store_true')
     parser.add_argument("--num_aug_pretrain", default=4, required=False, type=int, help="number of augmented sentences per original sentence for pretraining")
     parser.add_argument("--num_aug", default=4, required=False, type=int, help="number of augmented sentences per original sentence")

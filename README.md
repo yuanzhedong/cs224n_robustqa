@@ -16,6 +16,13 @@
 python train.py --do-train --run-name baseline_distilbert --model-type distilbert
 ```
 
+Train distilbert with a single dataset
+```
+python train.py --do-train --run-name one_data_per_expert --model-type distilbert --train-dataset datasets/indomain_train/nat_questions
+python train.py --do-train --run-name one_data_per_expert --model-type distilbert --train-dataset datasets/indomain_train/newsqa
+python train.py --do-train --run-name one_data_per_expert --model-type distilbert --train-dataset datasets/indomain_train/squad 
+```
+
 
 ## Train MoE
 

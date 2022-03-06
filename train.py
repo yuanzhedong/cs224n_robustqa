@@ -164,7 +164,7 @@ class Trainer():
 
     def save(self, model, best_scores):
         if self.model_type == "distilbert":
-            #model.save_pretrained(self.path)
+            # model.save_pretrained(self.path)
             f1_score = best_scores["F1"]
             torch.save(model.state_dict(), self.path + f"/model_f1_{f1_score}.pt")
         else:
@@ -612,6 +612,7 @@ def main(rank, world_size, args):
         log.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
         log.info("Preparing Training Data...")
         args.device = device
+        _set_train_dataset(args.train_dataset)
         if args.pretrain:
             # the train split will be used for pretraining and the 
             # finetune split will be used for finetuning
@@ -702,6 +703,17 @@ def main(rank, world_size, args):
             for uuid in sorted(eval_preds):
                 csv_writer.writerow([uuid, eval_preds[uuid]])
 
+def _set_train_dataset(train_dataset):
+    """
+    Check if the train_dataset is specified. 
+    If train_dataset is "all", the default DATASET_CONFIG["train"] will be used;
+    Otherwise, the specified train_dataset will be used.
+    """
+    if train_dataset != "all":
+        assert os.path.exists(args.train_dataset), f'{args.train_dataset} does not exist!'
+        DATASET_CONFIG["train"] = [train_dataset]
+    print(f"train_dataset: {DATASET_CONFIG['train']}")
+    return
 
 if __name__ == '__main__':
     world_size = torch.cuda.device_count()

@@ -10,12 +10,11 @@ def get_train_test_args():
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--save-dir', type=str, default='save/')
     parser.add_argument('--pretrain', action='store_true')
-    parser.add_argument('--train', action='store_true')
-    parser.add_argument('--eval', action='store_true')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
     parser.add_argument('--model-type', type=str, default='distilbert')
     parser.add_argument('--use_cache', action='store_true') # only use_cache if the argument is present
     parser.add_argument('--do-train', action='store_true')
+    parser.add_argument('--train-dataset', type=str, default='all', help="all if train with all the training sets combined; or specificy the dataset path")
     parser.add_argument('--do-eval', action='store_true')
     parser.add_argument('--sub-file', type=str, default='')
     parser.add_argument('--visualize-predictions', action='store_true')

@@ -15,8 +15,8 @@ from tensorboardX import SummaryWriter
 
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
-from models import MoE
-from args import get_train_test_args, DATASET_CONFIG
+from models import MoE, MoEMultiBase
+from args import get_train_test_args, DATASET_CONFIG, INDOMAIN_CHECKPOINTS, VALID_MODEL_TYPES
 import torch.nn as nn
 
 from tqdm import tqdm
@@ -163,10 +163,15 @@ class Trainer():
         self.model_type = args.model_type
 
     def save(self, model, best_scores):
+        def remove_older_files(dir, max_files=5):
+            for filename in sorted(os.listdir(dir))[:-max_files]:
+                path_to_remove = os.path.join(dir, filename)
+                os.remove(path_to_remove)
         if self.model_type == "distilbert":
             # model.save_pretrained(self.path)
             f1_score = best_scores["F1"]
-            torch.save(model.state_dict(), self.path + f"/model_f1_{f1_score}.pt")
+            torch.save(model.state_dict(), self.path + f"/model_f1_{f1_score:.2f}.pt")
+            remove_older_files(self.path)
         else:
             print(f"Unsupported model type: {self.model_type}")
         # TODO: add save model
@@ -550,7 +555,6 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
 
 
 def main(rank, world_size, args):
-    assert args.model_type in ["distilbert", "moe", "switch_transformer"], "model must be either distilbert, moe, or switch_transformer"
     # define parser and arguments
     if world_size > 1:
         dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -595,8 +599,12 @@ def main(rank, world_size, args):
             loss_coef=1e-2,
             device=device
         ).to(rank)
+    elif args.model_type == "moe_multi_base":
+        model = MoEMultiBase(
+            base_model_checkpoints=INDOMAIN_CHECKPOINTS.values(),
+        )
     else:
-        raise ValueError("model_type must be either distilbert, moe, or switch_transformer")
+        raise ValueError(f"model_type must be either of {VALID_MODEL_TYPES}")
     if world_size > 1:
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
@@ -667,12 +675,12 @@ def main(rank, world_size, args):
         if args.model_type == "distilbert":             
             best_scores = trainer.train(
                 model, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, rank, world_size)
-        elif args.model_type in ["moe", "switch_transformer"]:
+        elif args.model_type in ["moe", "moe_multi_base", "switch_transformer"]:
             best_scores = trainer.train_moe(
                 model, pretrain_loader, train_loader, val_loader, val_dict, ood_val_loader, ood_val_dict, test_loader, test_dict, rank, world_size
             )
         else:
-            raise ValueError("model_type must be either distilbert, moe, or switch_transformer")
+            raise ValueError(f"model_type must be in {VALID_MODEL_TYPES}")
 
     if args.do_eval:
         args.device = device
@@ -715,9 +723,14 @@ def _set_train_dataset(train_dataset):
     print(f"train_dataset: {DATASET_CONFIG['train']}")
     return
 
+def _check_args(args):
+    assert args.model_type in VALID_MODEL_TYPES, print(f"model_type must be one of {VALID_MODEL_TYPES}!")
+
+
 if __name__ == '__main__':
     world_size = torch.cuda.device_count()
     args = get_train_test_args()
+    _check_args(args)
     os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 
     if world_size == 1:

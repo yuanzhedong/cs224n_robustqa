@@ -41,9 +41,9 @@ def get_train_test_args():
 
 DATASET_CONFIG = {
     "train": [
-        "datasets/indomain_train/nat_questions",
-        "datasets/indomain_train/newsqa",
-        "datasets/indomain_train/squad",
+        # "datasets/indomain_train/nat_questions",
+        # "datasets/indomain_train/newsqa",
+        # "datasets/indomain_train/squad",
         "datasets/oodomain_train/duorc",
         "datasets/oodomain_train/race",
         "datasets/oodomain_train/relation_extraction",
@@ -69,3 +69,11 @@ DATASET_CONFIG = {
         "datasets/oodomain_test/relation_extraction",
     ]
 }
+
+# Download here: https://drive.google.com/drive/folders/1h9cD0suloOs4FKo1uM0OuFVWNfLPrvUD?usp=sharing
+INDOMAIN_CHECKPOINTS = {
+    "nat": "pretrained/checkpoint_nat_f1_39.81.pt",
+    "newsqa": "pretrained/checkpoint_newsqa_f1_43.47.pt",
+    "squad": "pretrained/checkpoint_squad_f1_42.13.pt",
+}
+VALID_MODEL_TYPES = ["distilbert", "moe", "moe_multi_base", "switch_transformer"]

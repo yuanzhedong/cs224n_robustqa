@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -258,8 +260,9 @@ class MoE(nn.Module):
         self.base_model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
 
     def freeze_base_model(self):
-        for param in self.base_model.parameters():
-            param.requires_grad = False
+        for i in range(self.num_experts):
+            for param in self.base_models[i].parameters():
+                param.requires_grad = False
 
     def freeze_experts(self):
         for param in self.experts.parameters():
@@ -285,6 +288,81 @@ class MoE(nn.Module):
 
         output = torch.einsum('ebcd,bnec->bnd', expert_outputs, combine_tensor)
         logits = self.qa_outputs(output)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
+        end_logits = end_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
+
+        loss = auc_loss
+        if start_positions is not None and end_positions is not None:
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions = start_positions.clamp(
+                0, ignored_index)
+            end_positions = end_positions.clamp(0, ignored_index)
+
+            loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            loss = loss + (start_loss + end_loss) / 2
+        return start_logits, end_logits, loss
+
+
+class MoEMultiBase(nn.Module):
+    def __init__(self,
+        base_model_checkpoints,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ):
+        super().__init__()
+        self.device = device
+        self.base_models = self._load_checkpoints(base_model_checkpoints)
+        self.num_experts = len(self.base_models)
+        # gating_kwargs = {'second_policy_train': second_policy_train, 'second_policy_eval': second_policy_eval, 'second_threshold_train': second_threshold_train, 'second_threshold_eval': second_threshold_eval, 'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
+        # self.gate = Top2Gating(dim, num_gates = self.num_experts, **gating_kwargs)
+        # self.experts = default(experts, lambda: Experts(dim, num_experts = self.num_experts, hidden_dim = hidden_dim, activation = activation))
+        # self.loss_coef = loss_coef
+        self.qa_outputs = nn.Linear(768, 2)
+    
+    @staticmethod
+    def _load_checkpoints(checkpoints):
+        models = []
+        for checkpoint in checkpoints:
+            assert os.path.exists(checkpoint), f"{checkpoint} does not exist!"
+            model = DistilBertForQuestionAnswering.from_pretrained(checkpoint)
+            models.append(model)
+        return models
+
+    def freeze_base_model(self):
+        for param in self.base_model.parameters():
+            param.requires_grad = False
+
+    def freeze_experts(self):
+        pass
+
+    def forward(self, batch):
+        input_ids = batch['input_ids'].to(self.device)
+        attention_mask = batch['attention_mask'].to(self.device)
+        start_positions = batch['start_positions'].to(self.device) if 'start_positions' in batch.keys() else None
+        end_positions = batch['end_positions'].to(self.device) if 'end_positions' in batch.keys() else None
+        batch_size = len(input_ids)
+        outputs = []
+        for model in self.base_models:
+            output = model(
+                input_ids, 
+                attention_mask=attention_mask, 
+                start_positions=None, 
+                end_positions=None, 
+                output_hidden_states=True
+            )
+            outputs.append(output.hidden_states[-1])
+        import pdb; pdb.set_trace()
+        b, n, d, e = *outputs[0].shape, self.num_experts
+        outputs = outputs.reshape(b, e, n, d)
+        # apply a naive gating mechanism
+        logits = self.qa_outputs(outputs)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
         end_logits = end_logits.squeeze(-1).contiguous()  # (bs, max_query_len)

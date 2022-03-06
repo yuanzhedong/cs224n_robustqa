@@ -524,7 +524,7 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         print("not using cache, creating new encoding...")
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
-
+            dataset_dict_curr = None
             # for finetuning, back translate first because it is slower than eda
             if args.back_translate and split_name == "finetune": # also apends orignal sentences
                 print("BACK-TRANSLATE", split_name)
@@ -539,10 +539,9 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
                 )
                 dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
-            if split_name != "train" or (not args.eda and not args.back_translate):
+            if dataset_dict_curr is None:
                 dataset_dict_curr = util.read_squad(dataset_path)
                 dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
-
         data_encodings = read_and_process(
             args, tokenizer, dataset_dict, cache_path, split_name
         )

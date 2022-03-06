@@ -4,3 +4,5 @@ __pycache__/*
 wandb/*
 nltk_data/*
 cache/*
+*pyc
+*DS_Store

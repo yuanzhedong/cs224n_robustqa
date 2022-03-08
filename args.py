@@ -42,9 +42,9 @@ def get_train_test_args():
 
 DATASET_CONFIG = {
     "train": [
-        "datasets/indomain_train/nat_questions",
-        "datasets/indomain_train/newsqa",
-        "datasets/indomain_train/squad",
+        # "datasets/indomain_train/nat_questions",
+        # "datasets/indomain_train/newsqa",
+        # "datasets/indomain_train/squad",
         "datasets/oodomain_train/duorc",
         "datasets/oodomain_train/race",
         "datasets/oodomain_train/relation_extraction",

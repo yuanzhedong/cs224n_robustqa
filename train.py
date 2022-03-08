@@ -525,21 +525,23 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
         for dataset_path in dataset_paths:
             dataset_name = os.path.basename(dataset_path)
 
+            dataset_dict_curr = None
             # for finetuning, back translate first because it is slower than eda
             if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
-                if dataset_name in ["duorc", "race", "relation_extraction"]:
+                if dataset_name in ["duorc", "race", "relation_extraction"]: # back translate ood data only
                     dataset_dict_curr = perform_back_translate.perform_back_translate(
                         args, dataset_path, dataset_name
                     )
                     dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
             if args.eda and split_name in ["train", "finetune"]:  # eda.py does appends original sentences to augmented sentences
-                dataset_dict_curr = perform_eda.perform_eda(
-                    args, dataset_path, dataset_name
-                )
-                dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+                if dataset_name in ["duorc", "race", "relation_extraction"]: # eda on ood data only
+                    dataset_dict_curr = perform_eda.perform_eda(
+                        args, dataset_path, dataset_name
+                    )
+                    dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
-            if split_name != "train" or (not args.eda and not args.back_translate):
+            if dataset_dict_curr is None:
                 dataset_dict_curr = util.read_squad(dataset_path)
                 dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 

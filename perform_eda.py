@@ -148,7 +148,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 if start != -1:
                     #print("found!!!")
                     found_answer_counter += 1
-                    new_answer_dict['answer_start'].append(answer_dict['answer_start'])
+                    new_answer_dict['answer_start'].append(start)
                     new_answer_dict['text'].append(new_each_answer)
                 else:
                     lost_answer_counter += 1

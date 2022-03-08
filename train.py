@@ -534,10 +534,11 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
                     dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
             if args.eda and split_name in ["train", "finetune"]:  # eda.py does appends original sentences to augmented sentences
-                dataset_dict_curr = perform_eda.perform_eda(
-                    args, dataset_path, dataset_name
-                )
-                dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+                if dataset_name in ["duorc", "race", "relation_extraction"]: # eda on ood data only
+                    dataset_dict_curr = perform_eda.perform_eda(
+                        args, dataset_path, dataset_name
+                    )
+                    dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
             if dataset_dict_curr is None:
                 dataset_dict_curr = util.read_squad(dataset_path)

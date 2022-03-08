@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 from collections import OrderedDict
 from tkinter import N
 import torch
@@ -164,9 +165,9 @@ class Trainer():
 
     def save(self, model, best_scores):
         def remove_older_files(dir, max_files=3):
-            for filename in sorted(os.listdir(dir))[:-max_files]:
-                path_to_remove = os.path.join(dir, filename)
-                os.remove(path_to_remove)
+            for name in sorted(os.listdir(dir))[:-max_files]:
+                dir_to_remove = os.path.join(dir, name)
+                shutil.rmtree(dir_to_remove)
         if self.model_type == "distilbert":
             f1_score = best_scores["F1"]
             save_dir = self.path + f"/f1_{f1_score:.2f}"

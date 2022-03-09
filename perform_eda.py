@@ -148,7 +148,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 if start != -1:
                     #print("found!!!")
                     found_answer_counter += 1
-                    new_answer_dict['answer_start'].append(answer_dict['answer_start'])
+                    new_answer_dict['answer_start'].append(start)
                     new_answer_dict['text'].append(new_each_answer)
                 else:
                     lost_answer_counter += 1
@@ -158,7 +158,7 @@ def data_augmentation(args, dataset_name, data_dict_collapsed):
                 new_data_dict_collapsed['question'].append(clean_line(question_list[idx]))
                 new_data_dict_collapsed['context'].append(aug_context)
                 new_data_dict_collapsed['answer'].append(new_answer_dict)
-                new_data_dict_collapsed['id'].append(str(idx_context)+"translate"+id_list[idx])
+                new_data_dict_collapsed['id'].append(str(idx_context)+"eda"+id_list[idx])
     print("lost answer:", lost_answer_counter, "; found answer:", found_answer_counter)
     # Save augmented data to JSON file
     save_json_file = open("datasets/eda_"+dataset_name+".json", "w+")

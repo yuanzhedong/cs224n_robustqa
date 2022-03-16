@@ -720,7 +720,6 @@ def main(rank, world_size, args):
 
 if __name__ == '__main__':
     world_size = torch.cuda.device_count()
-    world_size = 1
     args = get_train_test_args()
     os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 

@@ -261,7 +261,7 @@ class SwitchTransformer(nn.Module):
     ## Switch Transformer
     """
 
-    def __init__(self, layer, n_layers, n_experts, device):
+    def __init__(self, layer, n_layers, n_experts, device, load_balancing_loss_ceof):
         super().__init__()
         # Make copies of the transformer layer
         self.layers = nn.ModuleList([copy.deepcopy(layer) for _ in range(n_layers)])
@@ -270,7 +270,7 @@ class SwitchTransformer(nn.Module):
         self.qa_outputs = nn.Linear(768, 2)
         self.base_model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
         self.device = device
-        self.load_balancing_loss_ceof = 0.01
+        self.load_balancing_loss_ceof = load_balancing_loss_ceof
         self.n_experts = n_experts # used to calculate lb loss
 
     def freeze_base_model(self):

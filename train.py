@@ -261,13 +261,27 @@ class Trainer():
         return results
     
     # Save test set results to disk for MoE
-    def test_moe(self, model, eval_loader, eval_dict, save_dir):
+    def test_moe(self, model, eval_loader, eval_dict, save_dir, dev_loader, dev_dict):
         eval_preds, eval_scores = self.evaluate_moe(model, eval_loader, eval_dict, return_preds=True, split="test")
         results_str = ', '.join(
             f'{k}: {v:05.2f}' for k, v in eval_scores.items())
         self.log.info(f'Eval {results_str}')
         # Write submission file
         sub_path = os.path.join(save_dir, "test")
+        self.log.info(f'Writing submission file to {sub_path}...')
+        with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
+            csv_writer = csv.writer(csv_fh, delimiter=',')
+            csv_writer.writerow(['Id', 'Predicted'])
+            for uuid in sorted(eval_preds):
+                csv_writer.writerow([uuid, eval_preds[uuid]])
+
+
+        eval_preds, eval_scores = self.evaluate_moe(model, dev_loader, dev_dict, return_preds=True, split="test")
+        results_str = ', '.join(
+            f'{k}: {v:05.2f}' for k, v in eval_scores.items())
+        self.log.info(f'Eval {results_str}')
+        # Write submission file
+        sub_path = os.path.join(save_dir, "val")
         self.log.info(f'Writing submission file to {sub_path}...')
         with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
             csv_writer = csv.writer(csv_fh, delimiter=',')
@@ -418,7 +432,7 @@ class Trainer():
                             if curr_score['F1'] >= best_scores['F1']:
                                 best_scores = curr_score
                                 self.log.info("Infer on testset...")
-                                self.test_moe(model, test_dataloader, test_dict, self.save_dir)
+                                self.test_moe(model, test_dataloader, test_dict, self.save_dir, ood_dev_dataloader, ood_dev_dict)
                             for k, v in best_scores.items():
                                 wandb.log({f'oodomain_val/pretrain_best_{k}': v})
                         if rank == 0:
@@ -484,7 +498,7 @@ class Trainer():
                             best_scores = curr_score
                             #self.save(model, curr_score['F1'])
                             self.log.info("Infer on testset...")
-                            self.test_moe(model, test_dataloader, test_dict, self.save_dir)
+                            self.test_moe(model, test_dataloader, test_dict, self.save_dir,  ood_dev_dataloader, ood_dev_dict)
                         for k, v in best_scores.items():
                             wandb.log({f'oodomain_val/best_{k}': v})
                     if rank == 0:
@@ -527,18 +541,17 @@ def get_dataset(args, tokenizer, split_name, num_aug=0):
             dataset_dict_curr = None
             # for finetuning, back translate first because it is slower than eda
             if args.back_translate and split_name in ["train", "finetune"]: # also apends orignal sentences
-                if dataset_name in ["duorc", "race", "relation_extraction"]: # back translate ood data only
+                if dataset_name in ["duorc", "race", "relation_extraction", "squad"]: # back translate ood data only
                     dataset_dict_curr = perform_back_translate.perform_back_translate(
                         args, dataset_path, dataset_name
                     )
                     dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
             if args.eda and split_name in ["train", "finetune"]:  # eda.py does appends original sentences to augmented sentences
-                if dataset_name in ["duorc", "race", "relation_extraction"]: # eda on ood data only
-                    dataset_dict_curr = perform_eda.perform_eda(
-                        args, dataset_path, dataset_name
-                    )
-                    dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+                dataset_dict_curr = perform_eda.perform_eda(
+                    args, dataset_path, dataset_name
+                )
+                dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
             if dataset_dict_curr is None:
                 dataset_dict_curr = util.read_squad(dataset_path)
@@ -573,7 +586,7 @@ def main(rank, world_size, args):
         attn=MultiHeadAttention(8, args.dim, 0.2)
         st_ff = SwitchFeedForward(capacity_factor=1.25,drop_tokens=False, n_experts=args.num_experts, expert=ff, d_model=args.dim, is_scale_prob=True)
         st_layer = SwitchTransformerLayer(d_model=args.dim, attn=attn, feed_forward=st_ff,dropout_prob=0.2)
-        model = SwitchTransformer(layer=st_layer, n_layers=args.n_transformer_layers, n_experts=args.num_experts, device=device).to(rank)        
+        model = SwitchTransformer(layer=st_layer, n_layers=args.n_transformer_layers, n_experts=args.num_experts, device=device, load_balancing_loss_ceof=args.load_balancing_loss_ceof).to(rank)        
     elif args.model_type == "moe":
         print("Using MoE")
         model = MoE(
@@ -706,6 +719,7 @@ def main(rank, world_size, args):
 
 if __name__ == '__main__':
     world_size = torch.cuda.device_count()
+    world_size = 1
     args = get_train_test_args()
     os.makedirs(args.save_dir, exist_ok=True)
     args.save_dir = util.get_save_dir(args.save_dir, args.run_name) 

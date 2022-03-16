@@ -36,6 +36,7 @@ def get_train_test_args():
     parser.add_argument('--freeze_basemodel', action='store_true', help="Freeze the base model weights when training MoE")
     parser.add_argument('--freeze_expert', action='store_true', help="Freeze the experts weights after pretraining")
     parser.add_argument('--n_transformer_layers', default=8, required=False, type=int, help="num of stacked transformer layers")
+    parser.add_argument('--load_balancing_loss_ceof', default=0.01, required=False, type=float, help="load_balancing_loss_ceof")
 
     args = parser.parse_args()
     return args

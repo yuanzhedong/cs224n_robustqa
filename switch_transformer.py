@@ -26,7 +26,6 @@ class MultiHeadAttention(nn.Module):
         self.v_lin = nn.Linear(in_features=self.dim, out_features=self.dim)
         self.out_lin = nn.Linear(in_features=self.dim, out_features=self.dim)
 
-
     def forward(self, query, key, value, mask, head_mask=None, output_attentions=False):
         """
         Parameters:
@@ -53,7 +52,9 @@ class MultiHeadAttention(nn.Module):
 
         def unshape(x):
             """group heads"""
-            return x.transpose(1, 2).contiguous().view(bs, -1, self.n_heads * dim_per_head)
+            return (
+                x.transpose(1, 2).contiguous().view(bs, -1, self.n_heads * dim_per_head)
+            )
 
         q = shape(self.q_lin(query))  # (bs, n_heads, q_length, dim_per_head)
         k = shape(self.k_lin(key))  # (bs, n_heads, k_length, dim_per_head)
@@ -61,10 +62,16 @@ class MultiHeadAttention(nn.Module):
 
         q = q / math.sqrt(dim_per_head)  # (bs, n_heads, q_length, dim_per_head)
         scores = torch.matmul(q, k.transpose(2, 3))  # (bs, n_heads, q_length, k_length)
-        mask = (mask == 0).view(mask_reshp).expand_as(scores)  # (bs, n_heads, q_length, k_length)
-        scores = scores.masked_fill(mask, -float("inf"))  # (bs, n_heads, q_length, k_length)
+        mask = (
+            (mask == 0).view(mask_reshp).expand_as(scores)
+        )  # (bs, n_heads, q_length, k_length)
+        scores = scores.masked_fill(
+            mask, -float("inf")
+        )  # (bs, n_heads, q_length, k_length)
 
-        weights = nn.functional.softmax(scores, dim=-1)  # (bs, n_heads, q_length, k_length)
+        weights = nn.functional.softmax(
+            scores, dim=-1
+        )  # (bs, n_heads, q_length, k_length)
         weights = self.dropout(weights)  # (bs, n_heads, q_length, k_length)
 
         # Mask heads if we want to
@@ -80,28 +87,34 @@ class MultiHeadAttention(nn.Module):
         else:
             return context
 
+
 class FeedForward(nn.Module):
-    def __init__(self, dim_input: int = 768, dim_feedforward: int = 4*768):
+    def __init__(self, dim_input: int = 768, dim_feedforward: int = 4 * 768):
         super().__init__()
 
         self.linear1 = nn.Linear(dim_input, dim_feedforward)
         self.relu = nn.ReLU()
         self.linear2 = nn.Linear(dim_feedforward, dim_input)
+
     def forward(self, x):
         return self.linear2(self.relu(self.linear1(x)))
+
 
 class SwitchFeedForward(nn.Module):
     """
     ## Routing among multiple FFNs
     """
 
-    def __init__(self, *,
-                 capacity_factor: float,
-                 drop_tokens: bool,
-                 is_scale_prob: bool,
-                 n_experts: int,
-                 expert: FeedForward,
-                 d_model: int):
+    def __init__(
+        self,
+        *,
+        capacity_factor: float,
+        drop_tokens: bool,
+        is_scale_prob: bool,
+        n_experts: int,
+        expert: FeedForward,
+        d_model: int
+    ):
         """
         * `capacity_factor` is the capacity of each expert as a factor relative to ideally balanced load
         * `drop_tokens` specifies whether to drop tokens if more tokens are routed to an expert than the capacity
@@ -146,7 +159,9 @@ class SwitchFeedForward(nn.Module):
         route_prob_max, routes = torch.max(route_prob, dim=-1)
 
         # Get indexes of tokens going to each expert
-        indexes_list = [torch.eq(routes, i).nonzero(as_tuple=True)[0] for i in range(self.n_experts)]
+        indexes_list = [
+            torch.eq(routes, i).nonzero(as_tuple=True)[0] for i in range(self.n_experts)
+        ]
 
         # Initialize an empty tensor to store outputs
         final_output = x.new_zeros(x.shape)
@@ -176,7 +191,9 @@ class SwitchFeedForward(nn.Module):
                 indexes_list[i] = indexes_list[i][:capacity]
 
         # Get outputs of the expert FFNs
-        expert_output = [self.experts[i](x[indexes_list[i], :]) for i in range(self.n_experts)]
+        expert_output = [
+            self.experts[i](x[indexes_list[i], :]) for i in range(self.n_experts)
+        ]
 
         # Assign to final output
         for i in range(self.n_experts):
@@ -193,7 +210,9 @@ class SwitchFeedForward(nn.Module):
         else:
             # Don't scale the values but multiply by $\frac{p}{\hat{p}} = 1$ so that the gradients flow
             # (this is something we experimented with).
-            final_output = final_output * (route_prob_max / route_prob_max.detach()).view(-1, 1)
+            final_output = final_output * (
+                route_prob_max / route_prob_max.detach()
+            ).view(-1, 1)
 
         # Change the shape of the final output back to `[seq_len, batch_size, d_model]`
         final_output = final_output.view(seq_len, batch_size, d_model)
@@ -217,11 +236,14 @@ class SwitchTransformerLayer(nn.Module):
     with handling extra outputs of switch feedforward module.
     """
 
-    def __init__(self, *,
-                 d_model: int,
-                 attn: MultiHeadAttention,
-                 feed_forward: SwitchFeedForward,
-                 dropout_prob: float):
+    def __init__(
+        self,
+        *,
+        d_model: int,
+        attn: MultiHeadAttention,
+        feed_forward: SwitchFeedForward,
+        dropout_prob: float
+    ):
         """
         * `d_model` is the token embedding size
         * `attn` is the attention module
@@ -236,9 +258,7 @@ class SwitchTransformerLayer(nn.Module):
         self.norm_self_attn = nn.LayerNorm([d_model])
         self.norm_ff = nn.LayerNorm([d_model])
 
-    def forward(self, *,
-                x: torch.Tensor,
-                mask: torch.Tensor):
+    def forward(self, *, x: torch.Tensor, mask: torch.Tensor):
         # Normalize the vectors before doing self attention
         z = self.norm_self_attn(x)
         # Run through self attention, i.e. keys and values are from self
@@ -268,10 +288,12 @@ class SwitchTransformer(nn.Module):
         # Final normalization layer
         self.norm = nn.LayerNorm([layer.size])
         self.qa_outputs = nn.Linear(768, 2)
-        self.base_model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+        self.base_model = DistilBertForQuestionAnswering.from_pretrained(
+            "distilbert-base-uncased"
+        )
         self.device = device
         self.load_balancing_loss_ceof = load_balancing_loss_ceof
-        self.n_experts = n_experts # used to calculate lb loss
+        self.n_experts = n_experts  # used to calculate lb loss
 
     def freeze_base_model(self):
         for param in self.base_model.parameters():
@@ -281,15 +303,29 @@ class SwitchTransformer(nn.Module):
         # TODO: find how to freeze the experts in the SwitchTransformer
         pass
 
-    #def forward(self, x: torch.Tensor, mask: torch.Tensor):
+    # def forward(self, x: torch.Tensor, mask: torch.Tensor):
     def forward(self, batch):
 
-        input_ids = batch['input_ids'].to(self.device)
-        attention_mask = batch['attention_mask'].to(self.device)
-        start_positions = batch['start_positions'].to(self.device) if 'start_positions' in batch.keys() else None
-        end_positions = batch['end_positions'].to(self.device) if 'end_positions' in batch.keys() else None
+        input_ids = batch["input_ids"].to(self.device)
+        attention_mask = batch["attention_mask"].to(self.device)
+        start_positions = (
+            batch["start_positions"].to(self.device)
+            if "start_positions" in batch.keys()
+            else None
+        )
+        end_positions = (
+            batch["end_positions"].to(self.device)
+            if "end_positions" in batch.keys()
+            else None
+        )
 
-        outputs = self.base_model(input_ids, attention_mask=attention_mask, start_positions=None, end_positions=None, output_hidden_states=True)
+        outputs = self.base_model(
+            input_ids,
+            attention_mask=attention_mask,
+            start_positions=None,
+            end_positions=None,
+            output_hidden_states=True,
+        )
         x = outputs.hidden_states[-1]
         # Run through each transformer layer
         counts, route_prob, n_dropped, route_prob_max = [], [], [], []
@@ -301,7 +337,6 @@ class SwitchTransformer(nn.Module):
             route_prob_max.append(p_max)
         # Finally, normalize the vectors
         output = self.norm(x)
-
 
         logits = self.qa_outputs(output)
         start_logits, end_logits = logits.split(1, dim=-1)
@@ -316,8 +351,7 @@ class SwitchTransformer(nn.Module):
                 end_positions = end_positions.squeeze(-1)
             # sometimes the start/end positions are outside our model inputs, we ignore these terms
             ignored_index = start_logits.size(1)
-            start_positions = start_positions.clamp(
-                0, ignored_index)
+            start_positions = start_positions.clamp(0, ignored_index)
             end_positions = end_positions.clamp(0, ignored_index)
 
             loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
@@ -331,8 +365,9 @@ class SwitchTransformer(nn.Module):
         route_frac = counts / total
         route_prob = route_prob / total
         load_balancing_loss = self.n_experts * (route_frac * route_prob).sum()
-        loss = load_balancing_loss if loss is None else loss + self.load_balancing_loss_ceof * load_balancing_loss
+        loss = (
+            load_balancing_loss
+            if loss is None
+            else loss + self.load_balancing_loss_ceof * load_balancing_loss
+        )
         return start_logits, end_logits, loss
-
-
-

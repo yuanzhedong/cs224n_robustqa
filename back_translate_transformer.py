@@ -14,41 +14,45 @@ from transformers import MarianMTModel, MarianTokenizer
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 print("device:", device)
-fr_model_name = 'Helsinki-NLP/opus-mt-en-fr'
+fr_model_name = "Helsinki-NLP/opus-mt-en-fr"
 fr_tokenizer = MarianTokenizer.from_pretrained(fr_model_name).to(device)
 fr_model = MarianMTModel.from_pretrained(fr_model_name).to(device)
 
-en_model_name = 'Helsinki-NLP/opus-mt-fr-en'
+en_model_name = "Helsinki-NLP/opus-mt-fr-en"
 en_tokenizer = MarianTokenizer.from_pretrained(en_model_name).to(device)
 en_model = MarianMTModel.from_pretrained(en_model_name).to(device)
+
 
 def translate(texts, model, tokenizer, language="fr"):
     # Prepare the text data into appropriate format for the model
     template = lambda text: f"{text}" if language == "en" else f">>{language}<< {text}"
-    #print(template)
+    # print(template)
     src_texts = [template(text) for text in texts]
-    #print(src_texts)
+    # print(src_texts)
 
-    
     # Generate translation using model
-    translated = model.generate(**tokenizer(src_texts, return_tensors="pt", padding=True).to(device))
+    translated = model.generate(
+        **tokenizer(src_texts, return_tensors="pt", padding=True).to(device)
+    )
 
     # Convert the generated tokens indices back into text
     translated_texts = tokenizer.batch_decode(translated, skip_special_tokens=True)
-    
+
     return translated_texts
+
 
 def back_translate(texts, source_lang="en", target_lang="fr"):
     # Translate from source to target language (fr)
-    fr_texts = translate(texts, fr_model, fr_tokenizer, 
-                         language=target_lang)
+    fr_texts = translate(texts, fr_model, fr_tokenizer, language=target_lang)
 
     # Translate from target language back to source language (en)
-    back_translated_texts = translate(fr_texts, en_model, en_tokenizer, 
-                                      language=source_lang)
-    
+    back_translated_texts = translate(
+        fr_texts, en_model, en_tokenizer, language=source_lang
+    )
+
     return fr_texts, back_translated_texts
 
-aug_texts = back_translate(['This is so cool'], source_lang="en", target_lang="fr")
+
+aug_texts = back_translate(["This is so cool"], source_lang="en", target_lang="fr")
 
 print(aug_texts)

@@ -8,24 +8,30 @@ import typing
 import httpcore
 
 try:
-    nltk.data.find('tokenizers/punkt')
+    nltk.data.find("tokenizers/punkt")
 except LookupError:
-    nltk.download('punkt')
+    nltk.download("punkt")
 
 
 class BackTranslation(object):
     """
     Translate the words to other language and translate back
     in order to generate more samples for NLP.
-    
+
     This package built based on googletrans package.
     Thus, you have to create only one instance to translate your words.
     Otherwise, an error will occur from googletrans.
 
     """
 
-    def __init__(self, url=['translate.google.com'], proxies: typing.Dict[str, httpcore.SyncHTTPTransport] = None):
-        self.translator = Translator(service_urls=url, proxies=proxies) # JL: added for AttributeError: 'Translator' object has no attribute 'raise_Exception'
+    def __init__(
+        self,
+        url=["translate.google.com"],
+        proxies: typing.Dict[str, httpcore.SyncHTTPTransport] = None,
+    ):
+        self.translator = Translator(
+            service_urls=url, proxies=proxies
+        )  # JL: added for AttributeError: 'Translator' object has no attribute 'raise_Exception'
         self.translator.raise_Exception = True
         self.Languages = LANGUAGES
         self.langCodes = LANG_CODES
@@ -42,27 +48,32 @@ class BackTranslation(object):
 
         # if tmp is null, set a default language for tmp.
         if not tmp:
-            if src == 'en':
-                tmp = 'zh-cn'
+            if src == "en":
+                tmp = "zh-cn"
             else:
-                tmp = 'en'
+                tmp = "en"
 
         if tmp not in self.Languages:
             raise ValueError("'{}': INVALID transited language.".format(tmp))
 
         if src == tmp:
-            raise ValueError("Transited language ({tmp}) should different from srouce language ({src}).".format(
-                tmp=self.langCodes[tmp], src=self.langCodes[src]))
+            raise ValueError(
+                "Transited language ({tmp}) should different from srouce language ({src}).".format(
+                    tmp=self.langCodes[tmp], src=self.langCodes[src]
+                )
+            )
 
         # check the length of text
         if len(text) > self.MAX_LENGTH:
             original_sentences = self._split_segement(sent_tokenize(text))
 
             t_text = self.translator.translate(original_sentences, src=src, dest=tmp)
-            tran_text = ' '.join([t.text for t in t_text])
+            tran_text = " ".join([t.text for t in t_text])
             time.sleep(sleeping)
-            r_text = self.translator.translate([t.text for t in t_text], src=tmp, dest=src)
-            back_text = ' '.join([r.text for r in r_text])
+            r_text = self.translator.translate(
+                [t.text for t in t_text], src=tmp, dest=src
+            )
+            back_text = " ".join([r.text for r in r_text])
             back_text.rstrip()
         else:
             mid_text = self.translator.translate(text, src=src, dest=tmp)
@@ -70,7 +81,13 @@ class BackTranslation(object):
             time.sleep(sleeping)  # Sleep between translation
             result_text = self.translator.translate(tran_text, src=tmp, dest=src)
             back_text = result_text.text
-        result = Translated(src_lang=src, tmp_lang=tmp, text=text, trans_text=tran_text, back_text=back_text)
+        result = Translated(
+            src_lang=src,
+            tmp_lang=tmp,
+            text=text,
+            trans_text=tran_text,
+            back_text=back_text,
+        )
         return result
 
     def _split_segement(self, sentences):
@@ -84,11 +101,11 @@ class BackTranslation(object):
         sentences_list = []
         block = ""
         for sentence in sentences:
-            if len((block.rstrip() + ' ' + sentence).encode('utf-8')) > self.MAX_LENGTH:
+            if len((block.rstrip() + " " + sentence).encode("utf-8")) > self.MAX_LENGTH:
                 sentences_list.append(block.rstrip())
                 block = sentence
             else:
-                block = block + sentence + ' '
+                block = block + sentence + " "
         sentences_list.append(block.rstrip())
         return sentences_list
 

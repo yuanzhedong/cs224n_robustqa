@@ -16,26 +16,32 @@ MIN_EXPERT_CAPACITY = 4
 
 # helper functions
 
+
 def default(val, default_val):
     default_val = default_val() if isfunction(default_val) else default_val
     return val if val is not None else default_val
 
+
 def cast_tuple(el):
     return el if isinstance(el, tuple) else (el,)
 
+
 # tensor related helper functions
+
 
 def top1(t):
     values, index = t.topk(k=1, dim=-1)
     values, index = map(lambda x: x.squeeze(dim=-1), (values, index))
     return values, index
 
+
 def cumsum_exclusive(t, dim=-1):
-    num_pad_dims = - dim - 1
+    num_pad_dims = -dim - 1
     pre_padding = (0, 0) * num_pad_dims
-    pre_slice   = (slice(None),) * num_pad_dims
+    pre_slice = (slice(None),) * num_pad_dims
     padded_t = F.pad(t, (*pre_padding, 1, 0)).cumsum(dim=dim)
     return padded_t[(..., slice(None, -1), *pre_slice)]
+
 
 # pytorch one hot throws an error if there are out of bound indices.
 # tensorflow, in contrast, does not throw an error
@@ -43,27 +49,35 @@ def safe_one_hot(indexes, max_length):
     max_index = indexes.max() + 1
     return F.one_hot(indexes, max(max_index + 1, max_length))[..., :max_length]
 
+
 def init_(t):
     dim = t.shape[-1]
     std = 1 / math.sqrt(dim)
     return t.uniform_(-std, std)
 
+
 # activations
+
 
 class GELU_(nn.Module):
     def forward(self, x):
-        return 0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+        return (
+            0.5
+            * x
+            * (
+                1
+                + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3)))
+            )
+        )
 
-GELU = nn.GELU if hasattr(nn, 'GELU') else GELU_
+
+GELU = nn.GELU if hasattr(nn, "GELU") else GELU_
 
 # expert class
 
+
 class Experts(nn.Module):
-    def __init__(self,
-        dim,
-        num_experts = 16,
-        hidden_dim = None,
-        activation = GELU):
+    def __init__(self, dim, num_experts=16, hidden_dim=None, activation=GELU):
         super().__init__()
 
         hidden_dim = default(hidden_dim, dim * 4)
@@ -80,29 +94,32 @@ class Experts(nn.Module):
         self.act = activation()
 
     def forward(self, x):
-        hidden = torch.einsum('...nd,...dh->...nh', x, self.w1)
+        hidden = torch.einsum("...nd,...dh->...nh", x, self.w1)
         hidden = self.act(hidden)
-        out    = torch.einsum('...nh,...hd->...nd', hidden, self.w2)
+        out = torch.einsum("...nh,...hd->...nd", hidden, self.w2)
         return out
+
 
 # the below code is almost all transcribed from the official tensorflow version, from which the papers are written
 # https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/models/research/moe.py
 
 # gating network
 
+
 class Top2Gating(nn.Module):
     def __init__(
         self,
         dim,
         num_gates,
-        eps = 1e-9,
-        outer_expert_dims = tuple(),
-        second_policy_train = 'random',
-        second_policy_eval = 'random',
-        second_threshold_train = 0.2,
-        second_threshold_eval = 0.2,
-        capacity_factor_train = 1.25,
-        capacity_factor_eval = 2.):
+        eps=1e-9,
+        outer_expert_dims=tuple(),
+        second_policy_train="random",
+        second_policy_eval="random",
+        second_threshold_train=0.2,
+        second_threshold_eval=0.2,
+        capacity_factor_train=1.25,
+        capacity_factor_eval=2.0,
+    ):
         super().__init__()
 
         self.eps = eps
@@ -116,7 +133,7 @@ class Top2Gating(nn.Module):
         self.capacity_factor_train = capacity_factor_train
         self.capacity_factor_eval = capacity_factor_eval
 
-    def forward(self, x, importance = None):
+    def forward(self, x, importance=None):
         *_, b, group_size, dim = x.shape
         num_gates = self.num_gates
 
@@ -129,7 +146,7 @@ class Top2Gating(nn.Module):
             threshold = self.second_threshold_eval
             capacity_factor = self.capacity_factor_eval
 
-        raw_gates = torch.einsum('...bnd,...de->...bne', x, self.w_gating)
+        raw_gates = torch.einsum("...bnd,...de->...bne", x, self.w_gating)
         raw_gates = raw_gates.softmax(dim=-1)
 
         # FIND TOP 2 EXPERTS PER POSITON
@@ -140,19 +157,19 @@ class Top2Gating(nn.Module):
         density_1_proxy = raw_gates
 
         if importance is not None:
-            equals_one_mask = (importance == 1.).float()
+            equals_one_mask = (importance == 1.0).float()
             mask_1 *= equals_one_mask[..., None]
             gate_1 *= equals_one_mask
             density_1_proxy = density_1_proxy * equals_one_mask[..., None]
             del equals_one_mask
 
-        gates_without_top_1 = raw_gates * (1. - mask_1)
+        gates_without_top_1 = raw_gates * (1.0 - mask_1)
 
         gate_2, index_2 = top1(gates_without_top_1)
         mask_2 = F.one_hot(index_2, num_gates).float()
 
         if importance is not None:
-            greater_zero_mask = (importance > 0.).float()
+            greater_zero_mask = (importance > 0.0).float()
             mask_2 *= greater_zero_mask[..., None]
             del greater_zero_mask
 
@@ -178,14 +195,18 @@ class Top2Gating(nn.Module):
         elif policy == "threshold":
             mask_2 *= (gate_2 > threshold).float()
         elif policy == "random":
-            probs = torch.zeros_like(gate_2).uniform_(0., 1.)
-            mask_2 *= (probs < (gate_2 / max(threshold, self.eps))).float().unsqueeze(-1)
+            probs = torch.zeros_like(gate_2).uniform_(0.0, 1.0)
+            mask_2 *= (
+                (probs < (gate_2 / max(threshold, self.eps))).float().unsqueeze(-1)
+            )
         else:
             raise ValueError(f"Unknown policy {policy}")
 
         # Each sequence sends (at most?) expert_capacity positions to each expert.
         # Static expert_capacity dimension is needed for expert batch sizes
-        expert_capacity = min(group_size, int((group_size * capacity_factor) / num_gates))
+        expert_capacity = min(
+            group_size, int((group_size * capacity_factor) / num_gates)
+        )
         expert_capacity = max(expert_capacity, MIN_EXPERT_CAPACITY)
         expert_capacity_f = float(expert_capacity)
 
@@ -212,14 +233,14 @@ class Top2Gating(nn.Module):
 
         position_in_expert_2 = position_in_expert_2.sum(dim=-1)
         gate_2 *= mask_2_flat
-        
+
         # [batch, group, experts, expert_capacity]
         combine_tensor = (
             gate_1[..., None, None]
             * mask_1_flat[..., None, None]
             * F.one_hot(index_1, num_gates)[..., None]
-            * safe_one_hot(position_in_expert_1.long(), expert_capacity)[..., None, :] +
-            gate_2[..., None, None]
+            * safe_one_hot(position_in_expert_1.long(), expert_capacity)[..., None, :]
+            + gate_2[..., None, None]
             * mask_2_flat[..., None, None]
             * F.one_hot(index_2, num_gates)[..., None]
             * safe_one_hot(position_in_expert_2.long(), expert_capacity)[..., None, :]
@@ -228,34 +249,55 @@ class Top2Gating(nn.Module):
         dispatch_tensor = combine_tensor.bool().to(combine_tensor)
         return dispatch_tensor, combine_tensor, loss
 
+
 # plain mixture of experts
 
+
 class MoE(nn.Module):
-    def __init__(self,
+    def __init__(
+        self,
         dim,
-        num_experts = 16,
-        hidden_dim = None,
-        activation = nn.ReLU,
-        second_policy_train = 'random',
-        second_policy_eval = 'random',
-        second_threshold_train = 0.2,
-        second_threshold_eval = 0.2,
-        capacity_factor_train = 1.25,
-        capacity_factor_eval = 2.,
-        loss_coef = 1e-2,
-        experts = None,
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+        num_experts=16,
+        hidden_dim=None,
+        activation=nn.ReLU,
+        second_policy_train="random",
+        second_policy_eval="random",
+        second_threshold_train=0.2,
+        second_threshold_eval=0.2,
+        capacity_factor_train=1.25,
+        capacity_factor_eval=2.0,
+        loss_coef=1e-2,
+        experts=None,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ):
         super().__init__()
         self.device = device
 
         self.num_experts = num_experts
 
-        gating_kwargs = {'second_policy_train': second_policy_train, 'second_policy_eval': second_policy_eval, 'second_threshold_train': second_threshold_train, 'second_threshold_eval': second_threshold_eval, 'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
-        self.gate = Top2Gating(dim, num_gates = num_experts, **gating_kwargs)
-        self.experts = default(experts, lambda: Experts(dim, num_experts = num_experts, hidden_dim = hidden_dim, activation = activation))
+        gating_kwargs = {
+            "second_policy_train": second_policy_train,
+            "second_policy_eval": second_policy_eval,
+            "second_threshold_train": second_threshold_train,
+            "second_threshold_eval": second_threshold_eval,
+            "capacity_factor_train": capacity_factor_train,
+            "capacity_factor_eval": capacity_factor_eval,
+        }
+        self.gate = Top2Gating(dim, num_gates=num_experts, **gating_kwargs)
+        self.experts = default(
+            experts,
+            lambda: Experts(
+                dim,
+                num_experts=num_experts,
+                hidden_dim=hidden_dim,
+                activation=activation,
+            ),
+        )
         self.loss_coef = loss_coef
         self.qa_outputs = nn.Linear(768, 2)
-        self.base_model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+        self.base_model = DistilBertForQuestionAnswering.from_pretrained(
+            "distilbert-base-uncased"
+        )
 
     def freeze_base_model(self):
         for param in self.base_model.parameters():
@@ -266,16 +308,30 @@ class MoE(nn.Module):
             param.requires_grad = False
 
     def forward(self, batch):
-        input_ids = batch['input_ids'].to(self.device)
-        attention_mask = batch['attention_mask'].to(self.device)
-        start_positions = batch['start_positions'].to(self.device) if 'start_positions' in batch.keys() else None
-        end_positions = batch['end_positions'].to(self.device) if 'end_positions' in batch.keys() else None
+        input_ids = batch["input_ids"].to(self.device)
+        attention_mask = batch["attention_mask"].to(self.device)
+        start_positions = (
+            batch["start_positions"].to(self.device)
+            if "start_positions" in batch.keys()
+            else None
+        )
+        end_positions = (
+            batch["end_positions"].to(self.device)
+            if "end_positions" in batch.keys()
+            else None
+        )
 
-        outputs = self.base_model(input_ids, attention_mask=attention_mask, start_positions=None, end_positions=None, output_hidden_states=True)
+        outputs = self.base_model(
+            input_ids,
+            attention_mask=attention_mask,
+            start_positions=None,
+            end_positions=None,
+            output_hidden_states=True,
+        )
         inputs = outputs.hidden_states[-1]
         b, n, d, e = *inputs.shape, self.num_experts
         dispatch_tensor, combine_tensor, auc_loss = self.gate(inputs)
-        expert_inputs = torch.einsum('bnd,bnec->ebcd', inputs, dispatch_tensor)
+        expert_inputs = torch.einsum("bnd,bnec->ebcd", inputs, dispatch_tensor)
 
         # Now feed the expert inputs through the experts.
         orig_shape = expert_inputs.shape
@@ -283,7 +339,7 @@ class MoE(nn.Module):
         expert_outputs = self.experts(expert_inputs)
         expert_outputs = expert_outputs.reshape(*orig_shape)
 
-        output = torch.einsum('ebcd,bnec->bnd', expert_outputs, combine_tensor)
+        output = torch.einsum("ebcd,bnec->bnd", expert_outputs, combine_tensor)
         logits = self.qa_outputs(output)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1).contiguous()  # (bs, max_query_len)
@@ -297,8 +353,7 @@ class MoE(nn.Module):
                 end_positions = end_positions.squeeze(-1)
             # sometimes the start/end positions are outside our model inputs, we ignore these terms
             ignored_index = start_logits.size(1)
-            start_positions = start_positions.clamp(
-                0, ignored_index)
+            start_positions = start_positions.clamp(0, ignored_index)
             end_positions = end_positions.clamp(0, ignored_index)
 
             loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
